@@ -9,6 +9,7 @@ import Path._
 import distributed.project.model.Utils.{ writeValue, readValue }
 import distributed.project.model.{ ArtifactLocation, BuildArtifactsIn }
 import logging.Logger
+import java.io.InputStream
 
 object LocalRepoHelper {
 
@@ -44,7 +45,7 @@ object LocalRepoHelper {
       // is the file already there? We might try to publish twice, as a previous run
       // failed. If so, let's check that what is there matches what we have (as a sanity
       // check) and print a message.
-      val f: File = try {
+      val f: InputStream = try {
         remote get key
         // if we are here the file exists, so we either match, or it's an error.
         // We might also fail to deserialize, though. We continue after the try.
@@ -53,8 +54,8 @@ object LocalRepoHelper {
           // the meta doesn't exist in the repo, or other I/O error (wrong privs, for instance).
           // we try to write, hoping we succeed.
           log.debug("While reading from repo: " + e.getMessage)
-          IO.write(file, writeValue(data))
-          remote put (key, file)
+          val s = writeValue(data)
+          remote put (key, s.getBytes)
           log.info("Written " + data.getClass.getSimpleName + " metadata: " + key)
           // all ok
           return
@@ -131,11 +132,8 @@ object LocalRepoHelper {
   protected def publishArtifactsMetadata(meta: ProjectArtifactInfo, remote: Repository, log: Logger): Unit = {
     val key = makeArtifactsMetaKey(meta.project.uuid)
     log.debug("Publishing artifacts meta info for project " + meta.project.config.name + ", uuid " + key)
-    // padding string, as withTemporaryFile() will fail if the prefix is too short
-    IO.withTemporaryFile(meta.project.config.name + "-padding", meta.project.uuid) { file =>
-      IO.write(file, writeValue(meta.versions))
-      remote put (key, file)
-    }
+    val s = writeValue(meta.versions)
+    remote put (key, s.getBytes)
   }
 
   /**

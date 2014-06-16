@@ -2,13 +2,18 @@ package distributed.project.model
 
 import ClassLoaderMadness.withContextLoader
 import com.typesafe.config.ConfigException.Missing
-import com.typesafe.config.ConfigFactory.{ parseString, parseFile }
+import com.typesafe.config.ConfigFactory.{ parseString, parseFile, parseReader }
 import com.typesafe.config.ConfigRenderOptions
 import com.typesafe.config.Config
 import com.lambdaworks.jacks.JacksOption._
 import com.lambdaworks.jacks.JacksMapper
 import com.fasterxml.jackson.databind.JsonMappingException
 import java.io.File
+import java.io.InputStreamReader
+import java.io.InputStream
+import java.util.zip.GZIPInputStream
+import java.io.BufferedInputStream
+import java.io.FileInputStream
 
 object Utils {
   private val mapper = JacksMapper.withOptions(CaseClassCheckNulls(true),
@@ -40,7 +45,9 @@ object Utils {
           throw new JsonMappingException(e.getMessage.split("\n")(0) + m2, e.getCause)
       }
     }
-  def readValue[T](f: File)(implicit m: Manifest[T]) = readValueT[T](parseFile(f))
+  def readValue[T](f: File)(implicit m: Manifest[T]) =
+    readValue[T](new BufferedInputStream(new FileInputStream(f)))
+  def readValue[T](f: InputStream)(implicit m: Manifest[T]) = readValueT[T](parseReader(new InputStreamReader(f)))
   def readValue[T](s: String)(implicit m: Manifest[T]) = readValueT[T](parseString(s))
   def writeValue[T](t: T)(implicit m: Manifest[T]) =
     withContextLoader(getClass.getClassLoader) { mapper.writeValueAsString[T](t) }

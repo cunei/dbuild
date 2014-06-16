@@ -3,8 +3,13 @@ package repo
 package core
 
 import java.io.File
+import java.io.InputStream
 import sbt.IO
 import dispatch.classic._
+import java.io.InputStream
+import java.util.zip.GZIPInputStream
+import java.io.BufferedInputStream
+import java.io.FileInputStream
 
 /** A cached remote repository. */
 class CachedRemoteReadableRepository(cacheDir: File, uri: String) extends ReadableRepository {
@@ -12,7 +17,7 @@ class CachedRemoteReadableRepository(cacheDir: File, uri: String) extends Readab
   
   protected def makeUrl(args: String*) = args mkString "/"
   
-  def get(key: String): File  = {
+  def get(key: String): InputStream  = {
     val cacheFile = new File(cacheDir, key)
     // TODO - Are we guaranteed uniqueness?  Should we embed knowledge of
     // `raw` vs `meta` keys here?
@@ -23,7 +28,11 @@ class CachedRemoteReadableRepository(cacheDir: File, uri: String) extends Readab
         case e: Exception =>
           throw new ResolveException(key, e.getMessage)
       }
-    cacheFile
+    val stream=new BufferedInputStream(new FileInputStream(cacheFile))
+    if (key.startsWith("meta/"))
+      new GZIPInputStream(stream)
+    else
+      stream
   }
 }
 
