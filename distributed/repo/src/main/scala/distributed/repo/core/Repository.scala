@@ -3,6 +3,7 @@ package repo
 package core
 
 import java.io.File
+import java.util.Date
 import org.apache.commons.io.IOUtils
 import sbt.Path._
 import java.io.InputStream
@@ -40,13 +41,14 @@ import Utils.{readValue,writeValue}
  * A GetKey is a generic, but type-safe, way to access some data stored in a repository.
  * It is only ever be created by the put() call of Repository, and used by its get(),
  * but never created explicitly by other user code.
+ * Its content should be treated as opaque: just store it somewhere, and use it later to retrieve data.
+ * 
  * TODO: add protection against external creation, by making constructors private to Repository,
  * or to this package. All methods should be private to Repository.
  *
  * Internally, a GetKey knows how to deserialize the stream returned by the repository into
  * its specific corresponding DataType.
  */
-// Note: do *not* make GetKey a subclass of Repository, as its instances are serialized via Jacks.
 sealed abstract class GetKey[DataType] extends {
   def uuid: String
   def streamToData(is: InputStream)(implicit m: Manifest[DataType]): DataType
@@ -218,7 +220,7 @@ abstract class ReadableRepository {
 
   /*
    * To create a concrete implementation of a Repository, just implement the low-level primitives
-   * listed below. fetch(), size() and scan() need not be thread-safe: lock and unlock are
+   * listed below. fetch(), size() and scan(), etc. need not be thread-safe: lock and unlock are
    * called to lock the repository when needed.
    */
  
@@ -226,6 +228,13 @@ abstract class ReadableRepository {
    * Read from the repository the data stored at Selector. If no data is present, return None.
    */
   protected def fetch(selector: Selector): Option[InputStream]
+  /**
+   * Read from the repository the timestamp when the data stored at Selector was last written.
+   * If no data is present, return None.
+   * Note that there is no corresponding high-level call: date() and delete() will only be
+   * used inside a lock/unlock section from a GC operation (whose details we will elaborate later).
+   */
+  protected def date(selector: Selector): Option[Date]
   /**
    * Return, if known, the actual space occupied in the Repository by the data stored
    * under Selector. If no data, return zero.
@@ -351,15 +360,18 @@ abstract class Repository extends ReadableRepository {
    * used to lock the repository when needed.
    * Grab the data from the InputStream and place it in the repository.
    * If some data already exists at that selector, overwrite it.
+   * When the data is written, also create/update an associated
+   * timestamp: it will be accessible as an instance of java.util.Date
+   * using date(selector).
    */
   protected def store(out: InputStream, selector: Selector): Unit
   /**
    * delete() removes the data at this selector, if any.
    * If no data is present, do nothing; if you need to check whether
    * any data exists, use hasData() beforehand.
-   * This low-level method can be implemented or can just fail if
-   * unimplemented; it currently just exists since it is likely that
-   * it will be needed at some point in the future.
+   * This low-level method should be implemented if possible, or it should
+   * do nothing if unsupported: it will be used to implement garbage collection
+   * for repositories at some point in the future.
    */
   protected def delete(selector: Selector) : Unit
 }
