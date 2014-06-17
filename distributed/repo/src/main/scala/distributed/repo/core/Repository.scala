@@ -6,7 +6,12 @@ import java.io.File
 import sbt.Path._
 import java.io.InputStream
 import java.io.OutputStream
+import java.io.OutputStreamWriter
+import java.io.BufferedInputStream
+import java.util.zip.GZIPInputStream
+import java.util.zip.GZIPOutputStream
 import project.model._
+import Utils.{readValue,writeValue}
 
 /*
  * This implementation of repositories operates on two levels. Internally, all concrete
@@ -43,13 +48,13 @@ import project.model._
 // Note: do *not* make GetKey a subclass of Repository, as its instances are serialized via Jacks.
 sealed abstract class GetKey[DataType] extends {
   def uuid: String
-  def streamToData(a: InputStream)(implicit m: Manifest[DataType]): DataType
+  def streamToData(is: InputStream)(implicit m: Manifest[DataType]): DataType
 }
 /**
- * An access GetKey used to retrieve a raw Array[Byte], which we use to store raw artifacts.
+ * An access GetKey used to retrieve a raw artifact.
  */
-case class GetRaw(uuid: String) extends GetKey[Array[Byte]] {
-  def streamToData(a: InputStream)(implicit m: Manifest[Array[Byte]]) = /* TODO: implement */ Array[Byte]()
+case class GetRaw(uuid: String) extends GetKey[InputStream] {
+  def streamToData(is: InputStream)(implicit m: Manifest[InputStream]) = is
 }
 /**
  * A GetMeta is a kind of GetKey used to access JSON-serializable metadata.
@@ -59,7 +64,8 @@ case class GetRaw(uuid: String) extends GetKey[Array[Byte]] {
  * Concrete subclasses of GetMeta are used for project descriptions, extraction metadata, etc.
  */
 abstract class GetMeta[DataType] extends GetKey[DataType] {
-  def streamToData(a: InputStream)(implicit m: Manifest[DataType]): DataType = /* TODO: gunzip */ sys.error("bah")
+  def streamToData(is: InputStream)(implicit m: Manifest[DataType]): DataType =
+    readValue[DataType](new GZIPInputStream(new BufferedInputStream(is))) // GZIPInputStream will decompress
 }
 case class GetProject(uuid: String) extends GetMeta[RepeatableProjectBuild]
 case class GetBuild(uuid: String) extends GetMeta[SavedConfiguration]
@@ -90,7 +96,7 @@ sealed abstract class Key[DataType, KeySource <: { def uuid: String }, Get <: Ge
   protected def keyName: String
   protected def path: Seq[String]
   def newGet(uuid: String): Get
-  def dataToStream(d: DataType): OutputStream
+  def dataToStream(d: DataType)(implicit m:Manifest[DataType]): InputStream
   /*
  * Selector-related utils
  */
@@ -117,17 +123,33 @@ sealed abstract class Key[DataType, KeySource <: { def uuid: String }, Get <: Ge
  * Use "import keys._" in client code, to bring the implicit repository Keys into scope.
  */
 package object keys {
-  implicit object RawKey extends Key[Array[Byte], ArtifactSha, GetRaw] {
+  implicit object RawKey extends Key[InputStream, ArtifactSha, GetRaw] {
     private def keyName = "raw"
     def path = Seq(keyName)
     def newGet(uuid: String) = GetRaw(uuid)
-    def dataToStream(d: Array[Byte]): OutputStream = new java.io.ByteArrayOutputStream()
+    def dataToStream(d: InputStream)(implicit m:Manifest[InputStream]): InputStream = d
   }
   /** Data under any "Meta" key is compressed during serialization/deserialization,  directly while in transit. */
   private[keys] sealed abstract class KeyMeta[DataType, Source <: { def uuid: String }, Get <: GetKey[DataType]]
     extends Key[DataType, Source, Get] {
     def path = Seq("meta", keyName)
-    def dataToStream(d: DataType): OutputStream = new java.io.ByteArrayOutputStream()
+    def dataToStream(d: DataType)(implicit m:Manifest[DataType]): InputStream =  {
+      val asString = writeValue(d)
+      val asBytes = asString.getBytes()
+      val pipeOut = new java.io.PipedOutputStream()
+      val zip = new GZIPOutputStream(pipeOut)
+      zip.write(asBytes)
+      zip.close()
+      new java.io.PipedInputStream(pipeOut)
+/*
+      // alternative, without pipes but using a further byte array:
+      val bos = new java.io.ByteArrayOutputStream()
+      val zip = new GZIPOutputStream(bos)
+      zip.write(asBytes)
+      zip.close()
+      new java.io.ByteArrayInputStream(bos.toByteArray())
+*/
+    }
   }
   implicit object ProjectKey extends KeyMeta[RepeatableProjectBuild, RepeatableProjectBuild, GetProject] {
     def keyName = "project"
@@ -256,11 +278,11 @@ abstract class Repository extends ReadableRepository {
   /**
    * store() does not need to be thread-safe: lock and unlock are
    * used to lock the repository when needed.
+   * Grab the data from the InputStream and place it in the repository
    */
-  protected def store(out: OutputStream, selector: Selector): Unit
+  protected def store(out: InputStream, selector: Selector): Unit
 }
 
-/*
 object Test {
   def z(r: Repository, key1: RepeatableProjectBuild, key2: ArtifactSha, key3: BuildArtifactsOut, data: Array[Byte]) = {
     // bring all the implicit Keys into scope
@@ -290,9 +312,9 @@ object Test {
     //    val k5:GetArtifacts=r.put(key1, key3)
     // will tell you: could not find implicit value for parameter key: Key[RepeatableProjectBuild,BuildArtifactsOut,Get]
     // which is just perfect, as we accidentally swapped key and data
+    
   }
 }
-*/
 
 object Repository {
 
