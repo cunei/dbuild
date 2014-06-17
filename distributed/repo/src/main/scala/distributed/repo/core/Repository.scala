@@ -3,6 +3,7 @@ package repo
 package core
 
 import java.io.File
+import org.apache.commons.io.IOUtils
 import sbt.Path._
 import java.io.InputStream
 import java.io.OutputStream
@@ -142,7 +143,8 @@ package object keys {
       zip.close()
       new java.io.PipedInputStream(pipeOut)
 /*
-      // alternative, without pipes but using a further byte array:
+      // Alternative, without pipes but using a further byte array.
+      // Might be faster, since most metadata chunks are small.
       val bos = new java.io.ByteArrayOutputStream()
       val zip = new GZIPOutputStream(bos)
       zip.write(asBytes)
@@ -230,9 +232,19 @@ abstract class ReadableRepository {
    */
   protected def size(selector: Selector): Int
   /**
+   * Read from the repository the data stored at Selector. If no data is present, return None.
+   */
+  protected def hasData(selector: Selector): Boolean
+  /**
    * scan() checks under the given Selector path, and returns all the immediate
-   * subselectors for which data exist in the repository. If no subselectors, return
+   * subselectors for which data exist in the repository. If no subselectors exist, return
    * an empty Seq.
+   * Only subselectors containing data are returned. Hence, if you only have data in
+   * Seq["a","b","c"] and you scan Seq["a"], you will /not/ get "b". Selectors do not
+   * work like directories, and there is currently no provision for "traversing" all the raw data
+   * in a repository. The end user should not use see, or attempt to use selectors and the low
+   * level interface anyway. However, if you enumerate() all the DataTypes for which you you ever
+   * put in data, you will indeed find all the content in the repository.
    */
   protected def scan(selector: Selector): Seq[Selector]
   /**
@@ -259,12 +271,23 @@ abstract class Repository extends ReadableRepository {
    * different than the main data. For instance, a BuildArtifactsOut
    * is always saved under the key corresponding to the matching
    * RepeatableProjectBuild.
+   * If "overwrite" is false, then an attempt to write data that should
+   * already be in will result in the data being verified against what
+   * is already there. If "overwrite" is true, then overwrite regardless.
    */
-  def put[DataType, KeySource <: { def uuid: String }, Get <: GetKey[DataType]](data: DataType, keySource: KeySource)(implicit key: Key[DataType, KeySource, Get], m: Manifest[Get]): Get = {
+  def put[DataType, KeySource <: { def uuid: String }, Get <: GetKey[DataType]](data: DataType,
+      keySource: KeySource, overwrite: Boolean = false)(implicit key: Key[DataType, KeySource, Get], m: Manifest[DataType]): Get = {
     lock
     val uuid = keySource.uuid
-    val out = key.dataToStream(data)
     val get = key.newGet(uuid)
+    // short circuit evaluation, hence hasData is called only if not overwrite
+    if (!overwrite && hasData(key.selector(get))) {
+      val previous = fetch(key.selector(get)).get
+      // compare the two InputStreams
+      val same = IOUtils.contentEquals(key.dataToStream(data), previous)
+      if (!same) sys.error("Internal Repository Error: data already in the repository does not match. Please report")
+    }
+    val out = key.dataToStream(data)
     store(out, key.selector(get))
     unlock
     get
@@ -272,19 +295,36 @@ abstract class Repository extends ReadableRepository {
   /**
    * In case the uuid source and the saved data coincide, a plain single-argument "put(data)" can be used instead.
    */
-  def put[DataType <: { def uuid: String }, Get <: GetKey[DataType]](data: DataType)(implicit key: Key[DataType, DataType, Get], m: Manifest[Get]): Get = put[DataType, DataType, Get](data, data)
+  def put[DataType <: { def uuid: String }, Get <: GetKey[DataType]](data: DataType)(implicit key: Key[DataType, DataType, Get], m: Manifest[DataType]): Get = put[DataType, DataType, Get](data, data)
 
   // the internal, low-level, non-type-safe equivalent to put()
   /**
    * store() does not need to be thread-safe: lock and unlock are
    * used to lock the repository when needed.
-   * Grab the data from the InputStream and place it in the repository
+   * Grab the data from the InputStream and place it in the repository.
+   * If some data already exists at that selector, overwrite it.
    */
   protected def store(out: InputStream, selector: Selector): Unit
+  /**
+   * delete() removes the data at this selector, if any.
+   * If no data is present, do nothing; if you need to check whether
+   * any data exists, use hasData() beforehand.
+   * This low-level method can be implemented or can just fail if
+   * unimplemented; it currently just exists since it is likely that
+   * it will be needed at some point in the future.
+   */
+  protected def delete(selector: Selector) : Unit
 }
 
-object Test {
-  def z(r: Repository, key1: RepeatableProjectBuild, key2: ArtifactSha, key3: BuildArtifactsOut, data: Array[Byte]) = {
+// in client code use:
+// import distributed.repo.core
+// import distributed.repo.core.keys._
+
+
+// This is dead code, but it is useful to check that it compiles successfully;
+// please leave it in.
+private object RepositoryCompilationTest {
+  def z(r: Repository, key1: RepeatableProjectBuild, key2: ArtifactSha, key3: BuildArtifactsOut, data: InputStream) = {
     // bring all the implicit Keys into scope
     import keys._
 
@@ -300,7 +340,7 @@ object Test {
 
     // same examples, but let's also check that all the types are correct:
     val k2: GetRaw = r.put(data, key2)
-    val m: Option[Array[Byte]] = r.get(k2)
+    val m: Option[InputStream] = r.get(k2)
     val k1: GetProject = r.put(key1, key1)
     val n: Option[RepeatableProjectBuild] = r.get(k1)
     val k3: GetProject = r.put(key1)
@@ -310,9 +350,8 @@ object Test {
 
     // and now, let's make some mistakes.
     //    val k5:GetArtifacts=r.put(key1, key3)
-    // will tell you: could not find implicit value for parameter key: Key[RepeatableProjectBuild,BuildArtifactsOut,Get]
+    // This should tell you: could not find implicit value for parameter key: Key[RepeatableProjectBuild,BuildArtifactsOut,Get]
     // which is just perfect, as we accidentally swapped key and data
-    
   }
 }
 

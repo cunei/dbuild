@@ -10,11 +10,9 @@ import distributed.project.model.Utils.{ writeValue, readValue }
 import distributed.project.model.{ ArtifactLocation, BuildArtifactsIn }
 import logging.Logger
 import java.io.InputStream
+import keys._
 
 object LocalRepoHelper {
-
-  protected def makeRawFileKey(sha: String): String =
-    "raw/" + sha
 
   // we write here the RepeatableDistributedBuild,
   // right after extraction
@@ -39,7 +37,11 @@ object LocalRepoHelper {
   // we use publishMeta() when we need to publish some data that may already be
   // in the remote repository (for instance: repeatable build info, or repeatable project info)
   def publishMeta[T <: { def uuid: String }](data: T, remote: Repository,
-    makeKey: String => String, log: Logger)(implicit m: scala.reflect.Manifest[T]): Unit =
+    makeKey: String => String, log: Logger)(implicit m: scala.reflect.Manifest[T]): Unit = {
+    ///.....
+  }
+/*
+  {
     IO.withTemporaryFile("meta-data", data.uuid) { file =>
       val key = makeKey(data.uuid)
       // is the file already there? We might try to publish twice, as a previous run
@@ -82,15 +84,13 @@ object LocalRepoHelper {
         throw new Exception("Repository consistency check failed")
       }
     }
+*/
 
   /** Publishes the given repeatable build configuration to the repository. */
   def publishBuildMeta(saved: SavedConfiguration, remote: Repository, log: Logger): Unit =
     publishMeta(saved, remote, makeBuildMetaKey, log)
 
-  def readBuildMeta(uuid: String, remote: ReadableRepository): Option[SavedConfiguration] = {
-    val file = remote get makeBuildMetaKey(uuid)
-    Some(readValue[SavedConfiguration](file))
-  }
+  def readBuildMeta(g: GetBuild, remote: ReadableRepository): Option[SavedConfiguration] = remote.get(g)
 
   def makeArtifactSha(file: File, localRepo: File) = {
     val sha = hashing.files sha1 file
@@ -119,10 +119,11 @@ object LocalRepoHelper {
   protected def publishRawArtifacts(localRepo: File, subproj: String, files: Seq[ArtifactSha], remote: Repository, log: Logger) = {
     if (subproj != "") log.debug("Checking files for subproject: " + subproj)
     files foreach {
-      case ArtifactSha(sha, location) =>
-        val key = makeRawFileKey(sha)
+      case artSha@ArtifactSha(sha, location) =>
         log.debug("Checking file: " + location)
-        remote put (key, localRepo / location)
+        // we need an InputStream, rather than FileInputStream, because of the implicit "key" parameter
+        val stream:InputStream = new java.io.FileInputStream(localRepo / location)
+        val getKey = remote.put(stream, artSha)
     }
   }
 
@@ -130,10 +131,8 @@ object LocalRepoHelper {
     publishMeta(project, remote, makeProjectMetaKey, log)
 
   protected def publishArtifactsMetadata(meta: ProjectArtifactInfo, remote: Repository, log: Logger): Unit = {
-    val key = makeArtifactsMetaKey(meta.project.uuid)
-    log.debug("Publishing artifacts meta info for project " + meta.project.config.name + ", uuid " + key)
-    val s = writeValue(meta.versions)
-    remote put (key, s.getBytes)
+    val getKey = remote.put(meta.versions, meta.project)
+    log.debug("Published artifacts meta info for project " + meta.project.config.name + ", uuid" + getKey.uuid)
   }
 
   /**

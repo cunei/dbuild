@@ -99,7 +99,7 @@ object DistributedBuilderBuild extends Build with BuildHelper {
   lazy val drepo = (
     DmodProject("repo")
     dependsOn(dmeta, logging)
-    dependsOnRemote(mvnAether, aetherWagon, dispatch)
+    dependsOnRemote(mvnAether, aetherWagon, dispatch, commonsIO)
     dependsOnSbt(sbtIo, sbtLaunchInt)
       settings(sourceGenerators in Compile <+= (sourceManaged in Compile, version, organization, scalaVersion, streams) map { (dir, version, org, sv, s) =>
         val file = dir / "Defaults.scala"
