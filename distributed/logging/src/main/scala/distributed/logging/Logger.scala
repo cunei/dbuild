@@ -79,3 +79,14 @@ class StreamLogger(out: java.io.PrintStream, debug: Boolean) extends BasicLogger
       }
     }
 }
+
+
+object NullLogger extends Logger {
+  def out(s: => String): Unit = ()
+  def err(s: => String): Unit = ()
+  def buffer[T](f: => T): T = f
+  def newNestedLogger(name: String, projName: String = ""): distributed.logging.Logger = this
+  def log(level: sbt.Level.Value, message: => String): Unit = ()
+  def success(message: => String): Unit = ()
+  def trace(t: => Throwable): Unit = ()
+}

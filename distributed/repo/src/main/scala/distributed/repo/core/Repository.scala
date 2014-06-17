@@ -276,7 +276,8 @@ abstract class Repository extends ReadableRepository {
    * is already there. If "overwrite" is true, then overwrite regardless.
    */
   def put[DataType, KeySource <: { def uuid: String }, Get <: GetKey[DataType]](data: DataType,
-      keySource: KeySource, overwrite: Boolean = false)(implicit key: Key[DataType, KeySource, Get], m: Manifest[DataType]): Get = {
+      keySource: KeySource, overwrite: Boolean = false)(implicit key: Key[DataType, KeySource, Get], m: Manifest[DataType]
+          /*, log:distributed.logging.Logger = distributed.logging.NullLogger */): Get = {
     lock
     val uuid = keySource.uuid
     val get = key.newGet(uuid)
@@ -292,6 +293,53 @@ abstract class Repository extends ReadableRepository {
     unlock
     get
   }
+  
+  // TODO: Add logging, following this scheme (more or less):
+  /*
+  {
+    IO.withTemporaryFile("meta-data", data.uuid) { file =>
+      val key = makeKey(data.uuid)
+      // is the file already there? We might try to publish twice, as a previous run
+      // failed. If so, let's check that what is there matches what we have (as a sanity
+      // check) and print a message.
+      val f: InputStream = try {
+        remote get key
+        // if we are here the file exists, so we either match, or it's an error.
+        // We might also fail to deserialize, though. We continue after the try.
+      } catch {
+        case e =>
+          // the meta doesn't exist in the repo, or other I/O error (wrong privs, for instance).
+          // we try to write, hoping we succeed.
+          log.debug("While reading from repo: " + e.getMessage)
+          val s = writeValue(data)
+          remote put (key, s.getBytes)
+          log.info("Written " + data.getClass.getSimpleName + " metadata: " + key)
+          // all ok
+          return
+      }
+      val existingBuild: T = try {
+        readValue[T](f)
+        // deserialized ok. We continue after the try
+      } catch {
+        case e =>
+          // failed to deserialize. Should be impossible.
+          log.error("The data already present in the dbuild repository for this data (uuid = " + data.uuid + ")")
+          log.error("does not seem to be a valid " + data.getClass.getSimpleName + ". This shouldn't happen! Please report.")
+          log.error("Key: " + key)
+          throw new Exception("Repository consistency check failed", e)
+      }
+      if (existingBuild == data) {
+        log.info("The " + data.getClass.getSimpleName + " metadata (uuid " + data.uuid + ") is already in the repository.")
+      } else {
+        log.error("The data already present in the dbuild repository for this data (uuid = " + data.uuid + ")")
+        log.error("does not match the current metadata. This shouldn't happen! Please report.")
+        log.error("Key: " + key)
+        throw new Exception("Repository consistency check failed")
+      }
+    }
+*/
+
+  
   /**
    * In case the uuid source and the saved data coincide, a plain single-argument "put(data)" can be used instead.
    */
