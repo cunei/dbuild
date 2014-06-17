@@ -77,10 +77,15 @@ case class GetExtract(uuid: String) extends GetMeta[ExtractionConfig]
  * of the specific kind of data that is being written or retrieved, nor about what a
  * selector is all about, other than it describes a path to data (as a Seq[String]).
  *
+ * Note that not all of the kinds of data are placed in the repository under their own
+ * uuid: in some cases (raw files for instance, or BuildArtifactsOuts), the uuid depends
+ * on a related piece of data of a different kind. That is represented by KeySource, which
+ * must be able to provide the needed uuid.
+ * 
  * TODO: all Key methods should be private to Repository. Keys themselves should be public,
  * as they are implicitly used by put() and get().
  */
-sealed abstract class Key[DataType, Source <: { def uuid: String }, Get <: GetKey[DataType]] {
+sealed abstract class Key[DataType, KeySource <: { def uuid: String }, Get <: GetKey[DataType]] {
   /** the concrete keys use "keyName" as a convenience, to generate the path */
   protected def keyName: String
   protected def path: Seq[String]
@@ -153,7 +158,7 @@ case class Selector(path: Seq[String])
  * Abstract class for a readable repository of data, indexed by GetKeys.
  * The high-level, type-safe interface (get/size/scan) is also safe to use
  * from multiple processes simultaneously.
- * 
+ *
  * To implement a concrete subclass of a ReadableRepository, implement
  * the low-level: fetch, size, scan, lock, and unlock.
  */
@@ -189,15 +194,17 @@ abstract class ReadableRepository {
 
   /*
    * To create a concrete implementation of a Repository, just implement the low-level primitives
-   * listed below.
+   * listed below. fetch(), size() and scan() need not be thread-safe: lock and unlock are
+   * called to lock the repository when needed.
    */
+ 
   /**
    * Read from the repository the data stored at Selector. If no data is present, return None.
    */
   protected def fetch(selector: Selector): Option[InputStream]
   /**
    * Return, if known, the actual space occupied in the Repository by the data stored
-   * under Selector. If no data, return zero. 
+   * under Selector. If no data, return zero.
    */
   protected def size(selector: Selector): Int
   /**
@@ -218,14 +225,19 @@ abstract class ReadableRepository {
  * Abstract class for a readable/writeable repository of data, indexed by GetKeys.
  * The high-level, type-safe interface (get/put) is also safe to use from
  * multiple processes simultaneously.
- * 
+ *
  * To implement a concrete subclass of a Repository, implement
  * the low-level: fetch, store, size, scan, lock, and unlock.
  */
 abstract class Repository extends ReadableRepository {
-  /** Puts some contents into the given key. */
-  // wrong. KeySource is not parametrized, so it can be anything! Crap.
-  def put[DataType <: { def uuid: String }, Get <: GetKey[DataType]](data: DataType)(implicit key: Key[DataType, DataType, Get], m: Manifest[Get]): Get = put[DataType, DataType, Get](data, data)
+  /**
+   * Puts some contents into the given key.
+   * The data of type DataType will be placed into the repository
+   * under a key decided by the uuid of keySource, which may be
+   * different than the main data. For instance, a BuildArtifactsOut
+   * is always saved under the key corresponding to the matching
+   * RepeatableProjectBuild.
+   */
   def put[DataType, KeySource <: { def uuid: String }, Get <: GetKey[DataType]](data: DataType, keySource: KeySource)(implicit key: Key[DataType, KeySource, Get], m: Manifest[Get]): Get = {
     lock
     val uuid = keySource.uuid
@@ -235,10 +247,20 @@ abstract class Repository extends ReadableRepository {
     unlock
     get
   }
-  // the internal, non type safe versions, defined by the concrete implementations
+  /**
+   * In case the uuid source and the saved data coincide, a plain single-argument "put(data)" can be used instead.
+   */
+  def put[DataType <: { def uuid: String }, Get <: GetKey[DataType]](data: DataType)(implicit key: Key[DataType, DataType, Get], m: Manifest[Get]): Get = put[DataType, DataType, Get](data, data)
+
+  // the internal, low-level, non-type-safe equivalent to put()
+  /**
+   * store() does not need to be thread-safe: lock and unlock are
+   * used to lock the repository when needed.
+   */
   protected def store(out: OutputStream, selector: Selector): Unit
 }
 
+/*
 object Test {
   def z(r: Repository, key1: RepeatableProjectBuild, key2: ArtifactSha, key3: BuildArtifactsOut, data: Array[Byte]) = {
     // bring all the implicit Keys into scope
@@ -270,6 +292,7 @@ object Test {
     // which is just perfect, as we accidentally swapped key and data
   }
 }
+*/
 
 object Repository {
 
