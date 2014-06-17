@@ -37,43 +37,19 @@ import Utils.{readValue,writeValue}
  * using the unstructured calls: store(data,selector) / fetch(selector)
  */
 
-/**
+////////////////////
+/*
  * A GetKey is a generic, but type-safe, way to access some data stored in a repository.
  * It is only ever be created by the put() call of Repository, and used by its get(),
- * but never created explicitly by other user code.
+ * but never created explicitly by any other user code.
  * Its content should be treated as opaque: just store it somewhere, and use it later to retrieve data.
  * 
- * TODO: add protection against external creation, by making constructors private to Repository,
- * or to this package. All methods should be private to Repository.
- *
- * Internally, a GetKey knows how to deserialize the stream returned by the repository into
- * its specific corresponding DataType.
+ * Since GetKeys are in turn serialized/deserialized as part of metadata, their definition is in the
+ * metadata project, although logically they belong next to the definition of Key and Repository.
  */
-sealed abstract class GetKey[DataType] extends {
-  def uuid: String
-  def streamToData(is: InputStream)(implicit m: Manifest[DataType]): DataType
-}
-/**
- * An access GetKey used to retrieve a raw artifact.
- */
-case class GetRaw(uuid: String) extends GetKey[InputStream] {
-  def streamToData(is: InputStream)(implicit m: Manifest[InputStream]) = is
-}
-/**
- * A GetMeta is a kind of GetKey used to access JSON-serializable metadata.
- * We define streamToData() here for all such metadata classes; since the serialized
- * form is simple textual JSON, we can automatically filter it through a gzip compressor,
- * in order to save space.
- * Concrete subclasses of GetMeta are used for project descriptions, extraction metadata, etc.
- */
-abstract class GetMeta[DataType] extends GetKey[DataType] {
-  def streamToData(is: InputStream)(implicit m: Manifest[DataType]): DataType =
-    readValue[DataType](new GZIPInputStream(new BufferedInputStream(is))) // GZIPInputStream will decompress
-}
-case class GetProject(uuid: String) extends GetMeta[RepeatableProjectBuild]
-case class GetBuild(uuid: String) extends GetMeta[SavedConfiguration]
-case class GetArtifacts(uuid: String) extends GetMeta[BuildArtifactsOut]
-case class GetExtract(uuid: String) extends GetMeta[ExtractionConfig]
+
+// sealed abstract class GetKey[DataType] extends { def uuid: String }
+
 
 /**
  * A Key data structure contains the logic needed to interface the higher, type-safe
@@ -91,8 +67,8 @@ case class GetExtract(uuid: String) extends GetMeta[ExtractionConfig]
  * on a related piece of data of a different kind. That is represented by KeySource, which
  * must be able to provide the needed uuid.
  * 
- * TODO: all Key methods should be private to Repository. Keys themselves should be public,
- * as they are implicitly used by put() and get().
+ * In theory, all Key methods should be private to Repository. Keys themselves should be public,
+ * as they are used as implicit parameters by put() and get().
  */
 sealed abstract class Key[DataType, KeySource <: { def uuid: String }, Get <: GetKey[DataType]] {
   /** the concrete keys use "keyName" as a convenience, to generate the path */
@@ -100,6 +76,7 @@ sealed abstract class Key[DataType, KeySource <: { def uuid: String }, Get <: Ge
   protected def path: Seq[String]
   def newGet(uuid: String): Get
   def dataToStream(d: DataType)(implicit m:Manifest[DataType]): InputStream
+  def streamToData(is: InputStream)(implicit m: Manifest[DataType]): DataType
   /*
  * Selector-related utils
  */
@@ -131,11 +108,19 @@ package object keys {
     def path = Seq(keyName)
     def newGet(uuid: String) = GetRaw(uuid)
     def dataToStream(d: InputStream)(implicit m:Manifest[InputStream]): InputStream = d
+    def streamToData(is: InputStream)(implicit m: Manifest[InputStream]) = is
   }
-  /** Data under any "Meta" key is compressed during serialization/deserialization,  directly while in transit. */
+  /**
+   * A KeyMeta is a kind of Key used to access JSON-serializable metadata.
+   * We define streamToData() and dataToStream here for all such metadata classes; since the serialized
+   * form is simple textual JSON, we can automatically filter it through a gzip compressor,
+   * in order to save space.
+   */
   private[keys] sealed abstract class KeyMeta[DataType, Source <: { def uuid: String }, Get <: GetKey[DataType]]
     extends Key[DataType, Source, Get] {
     def path = Seq("meta", keyName)
+    def streamToData(is: InputStream)(implicit m: Manifest[DataType]): DataType =
+      readValue[DataType](new GZIPInputStream(new BufferedInputStream(is))) // GZIPInputStream will decompress
     def dataToStream(d: DataType)(implicit m:Manifest[DataType]): InputStream =  {
       val asString = writeValue(d)
       val asBytes = asString.getBytes()
@@ -194,7 +179,7 @@ abstract class ReadableRepository {
    */
   def get[DataType](g: GetKey[DataType])(implicit key: Key[DataType, _, _], m: Manifest[DataType]): Option[DataType] = {
     lock
-    val data = fetch(key.selector(g)) map g.streamToData
+    val data = fetch(key.selector(g)) map key.streamToData
     unlock
     data
   }
