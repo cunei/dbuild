@@ -94,7 +94,7 @@ abstract class ReadableRepository {
    * Retrieves the space concretely taken in the repository to store
    * the data indexed by this key. Returns zero if key not present.
    */
-  def getSize[DataType, Get <: GetKey[DataType]](g: Get)(implicit key: Key[DataType, _, Get], m: Manifest[Get]): Int = {
+  def getSize[DataType, Get <: GetKey[DataType]](g: Get)(implicit key: Key[DataType, _, Get], m: Manifest[DataType]): Int = {
     lock
     val len = size(key.selector(g))
     unlock
@@ -140,10 +140,12 @@ abstract class WriteableRepository extends ReadableRepository {
 
 object Test {
   def z(r:WriteableRepository, key1:RepeatableProjectBuild,key2:ArtifactSha, data: Array[Byte]) = {
-    val k1=r.put(key1)
-    val n=r.get(k1)
     val k2=r.put(data,key2)
     val m=r.get(k2)
+    val k1=r.put(key1, key1)
+//    val n=r.get(k1)
+    val k3=r.put(key1)
+//    val o=r.get(k3)
   }
 }
 
