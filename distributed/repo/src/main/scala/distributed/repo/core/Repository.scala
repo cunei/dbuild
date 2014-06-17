@@ -30,7 +30,7 @@ sealed abstract class Key[DataType, Source <: { def uuid: String }, Get <: GetKe
  * a sequence of strings that represents a full key path under which
  * to store an unstructured stream of data.
  */
-  def selector(get:Get) = path :+ get.uuid
+  def selector(get:GetKey[DataType]) = path :+ get.uuid
   def uuid(selector:Seq[String]) = selector.tail
 }
 case class GetRaw(uuid: String) extends GetKey[Array[Byte]] {
@@ -84,7 +84,7 @@ abstract class ReadableRepository {
   /**
    * Retrieves the contents stored at a given key, if present.
    */
-  def get[DataType, Get <: GetKey[DataType]](g: Get)(implicit key: Key[DataType, _, Get], m: Manifest[DataType]): Option[DataType] = {
+  def get[DataType](g: GetKey[DataType])(implicit key: Key[DataType, _, _], m: Manifest[DataType]): Option[DataType] = {
     lock
     val data = fetch(key.selector(g)) map { g.streamToData }
     unlock
@@ -94,7 +94,7 @@ abstract class ReadableRepository {
    * Retrieves the space concretely taken in the repository to store
    * the data indexed by this key. Returns zero if key not present.
    */
-  def getSize[DataType, Get <: GetKey[DataType]](g: Get)(implicit key: Key[DataType, _, Get], m: Manifest[DataType]): Int = {
+  def getSize[DataType](g: GetKey[DataType])(implicit key: Key[DataType, _, _], m: Manifest[DataType]): Int = {
     lock
     val len = size(key.selector(g))
     unlock
@@ -139,13 +139,19 @@ abstract class WriteableRepository extends ReadableRepository {
 }
 
 object Test {
-  def z(r:WriteableRepository, key1:RepeatableProjectBuild,key2:ArtifactSha, data: Array[Byte]) = {
-    val k2=r.put(data,key2)
-    val m=r.get(k2)
-    val k1=r.put(key1, key1)
-//    val n=r.get(k1)
-    val k3=r.put(key1)
-//    val o=r.get(k3)
+  def z(r:WriteableRepository, key1:RepeatableProjectBuild,key2:ArtifactSha, key3:BuildArtifactsOut, data: Array[Byte]) = {
+    val k2:GetRaw=r.put(data,key2)
+    val m:Option[Array[Byte]]=r.get(k2)
+    val k1:GetProject=r.put(key1, key1)
+    val n:Option[RepeatableProjectBuild]=r.get(k1)
+    val k3:GetProject=r.put(key1)
+    val o:Option[RepeatableProjectBuild]=r.get(k3)
+    val k4:GetArtifacts=r.put(key3, key1)
+    val p:Option[BuildArtifactsOut]=r.get(k4)
+// and now, let's make some mistakes.
+//    val k5:GetArtifacts=r.put(key1, key3)
+// will tell you: could not find implicit value for parameter key: Key[RepeatableProjectBuild,BuildArtifactsOut,Get]
+// which is just perfect, as we accidentally swapped key and data
   }
 }
 
