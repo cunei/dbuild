@@ -10,7 +10,7 @@ import distributed.project.model.Utils.{ writeValue, readValue }
 import distributed.project.model.{ ArtifactLocation, BuildArtifactsIn }
 import logging.Logger
 import java.io.InputStream
-import keys._
+import sections._
 
 object LocalRepoHelper {
 

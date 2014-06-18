@@ -3,7 +3,7 @@ package repo
 package core
 
 import java.io.File
-import distributed.project.model.Utils.{testSectionName,testIndexName}
+import distributed.project.model.Utils.{ testSectionName, testIndexName }
 import java.util.Date
 import org.apache.commons.io.IOUtils
 import sbt.Path._
@@ -19,25 +19,26 @@ import Utils.{ readValue, writeValue }
 /*
  * This implementation of repositories operates on two levels. Internally, all concrete
  * implementations of repositories need only implement unstructured data access:
- * they accept an InputStream and store its content under an access key (a path),
- * and they retrieve some content under a key and return it as an OutputStream.
+ * they accept an InputStream and store its content under an "access key" (GetKey). Also,
+ * they can retrieve existing content stored under a certain key, and return it again
+ * as an InputStream.
  * 
  * Externally, at the user level, access is made using a put() and a get() methods,
  * which strictly check the arguments and automatically generate correct keys depending
- * on the kind of data supplied. Further, since some kinds of data can only be stored
- * and retrieved using a uuid obtained from a specific different kind of data, the
+ * on the kind of data supplied. Since some kinds of data can only be stored and retrieved
+ * using a uuid that originates from a different kind of data, the
  * type-safe put() will only compile when the supplied combination of types is correct.
  * The result of a put() is a type-specific abstract access key (a GetKey), which can
  * be then used in further get() calls, which again will return only data of the correct kind.
  * 
- * The higher-level, type-safe level of a Repository, works using:
+ * In summary, the higher-level and type-safe public interface of a Repository works as:
  * put() -> returns a GetKey -> get(getKey)
  * 
  * The internal (hidden) lower-level, type-unsafe level of a Repository works by converting
  * the GetKey into a Selector using the information contained into a Key (see below) and
  * using the unstructured calls: store(data,selector) / fetch(selector)
  * 
- * A low-level selector is a combination of a "section" and an "index". Each section contains
+ * A low-level selector is a combination of a "section" and an "index". Each section designates
  * an independent set of data, each item of which can be accessed using an index.
  * The same index used in different sections refers to two different pieces of data.
  */
@@ -56,25 +57,25 @@ import Utils.{ readValue, writeValue }
 // sealed abstract class GetKey[DataType] extends { def uuid: String }
 
 /**
- * A Key data structure contains the logic needed to interface the higher, type-safe
+ * A Section structure contains the logic needed to interface the higher, type-safe
  * level of repositories with its lower, type-unsafe implementation.
  *
  * To access data, a combination of the kind of a GetKey, plus its uuid, is turned into an
- * internal "Selector" by the Key. Such a Selector is then used as the lower level of a
+ * internal "Selector" by the Section instance. Such a Selector is then used at the lower level of a
  * Repository implementation in order to represent an untyped, general data access path.
+ *
  * The lower level of a Repository only work on Selectors and raw data, and have no concept
- * of the specific kind of data that is being written or retrieved, nor about what a
- * selector is all about, other than it describes a path to data (as a Seq[String]).
+ * of the specific kind of data that is being written or retrieved.
  *
  * Note that not all of the kinds of data are placed in the repository under their own
  * uuid: in some cases (raw files for instance, or BuildArtifactsOuts), the uuid depends
  * on a related piece of data of a different kind. That is represented by KeySource, which
  * must be able to provide the needed uuid.
- *
- * In theory, all Key methods should be private to Repository. Keys themselves should be public,
- * as they are used as implicit parameters by put() and get().
  */
-sealed abstract class Key[DataType, KeySource <: { def uuid: String }, Get <: GetKey[DataType]] {
+/* In theory, all Section methods should be private to Repository, or at least to the enclosing package.
+ * The Sections themselves need to be public, as they are used as implicit parameters by put() and get().
+ */
+sealed abstract class Section[DataType, KeySource <: { def uuid: String }, Get <: GetKey[DataType]] {
   def newGet(uuid: String): Get
   def dataToStream(d: DataType)(implicit m: Manifest[DataType]): InputStream
   def streamToData(is: InputStream)(implicit m: Manifest[DataType]): DataType
@@ -84,7 +85,7 @@ sealed abstract class Key[DataType, KeySource <: { def uuid: String }, Get <: Ge
   /**
    * From higher level (typed) to lower level (untyped)
    */
-  def selector(get: GetKey[DataType]) = Selector(section, get.uuid)
+  def selector(get: GetKey[DataType]) = Selector(name, get.uuid)
   /**
    * Given a low-level Selector to an element, recreates the
    * corresponding high-level GetKey. This call is used in scan(),
@@ -93,11 +94,10 @@ sealed abstract class Key[DataType, KeySource <: { def uuid: String }, Get <: Ge
    */
   def getFromSelector(selector: Selector) = newGet(selector.index)
   /**
-   * In order to implement scan() (the low-level equivalent to enumerate()),
-   * we need the Selector section that contain the data
-   * of the kind supported by this Key.
+   * The name of the section. It is also used when calling scan() (the low-level
+   * equivalent to enumerate() in the implementation of a Repository.
    */
-  def section: SectionSelector
+  def name: String
 }
 
 /**
@@ -109,23 +109,23 @@ case class RawUUID(f: File) {
 }
 
 /**
- * Use "import keys._" in client code, to bring the implicit repository Keys into scope.
+ * Use "import sections._" in client code, to bring the implicit repository Keys into scope.
  */
-package object keys {
-  implicit object RawKey extends Key[InputStream, RawUUID, GetRaw] {
-    val section = SectionSelector("raw")
+package object sections {
+  implicit object RawSection extends Section[InputStream, RawUUID, GetRaw] {
+    val name = "artifactFiles"
     def newGet(uuid: String) = GetRaw(uuid)
     def dataToStream(d: InputStream)(implicit m: Manifest[InputStream]): InputStream = d
     def streamToData(is: InputStream)(implicit m: Manifest[InputStream]) = is
   }
   /**
-   * A KeyMeta is a kind of Key used to access JSON-serializable metadata.
+   * MetaSection groups the sections used to access JSON-serializable metadata.
    * We define streamToData() and dataToStream here for all such metadata classes; since the serialized
    * form is simple textual JSON, we can automatically filter it through a gzip compressor,
    * in order to save space.
    */
-  private[keys] sealed abstract class KeyMeta[DataType, KeySource <: { def uuid: String }, Get <: GetKey[DataType]]
-    extends Key[DataType, KeySource, Get] {
+  private[sections] sealed abstract class MetaSection[DataType, KeySource <: { def uuid: String }, Get <: GetKey[DataType]]
+    extends Section[DataType, KeySource, Get] {
     def streamToData(is: InputStream)(implicit m: Manifest[DataType]): DataType =
       readValue[DataType](new GZIPInputStream(new BufferedInputStream(is))) // GZIPInputStream will decompress
     def dataToStream(d: DataType)(implicit m: Manifest[DataType]): InputStream = {
@@ -147,33 +147,31 @@ package object keys {
 */
     }
   }
-  implicit object ProjectKey extends KeyMeta[RepeatableProjectBuild, RepeatableProjectBuild, GetProject] {
-    val section = SectionSelector("projects")
+  implicit object ProjectSection extends MetaSection[RepeatableProjectBuild, RepeatableProjectBuild, GetProject] {
+    val name = "projects"
     def newGet(uuid: String) = GetProject(uuid)
   }
-  implicit object BuildKey extends KeyMeta[SavedConfiguration, SavedConfiguration, GetBuild] {
-    val section = SectionSelector("builds")
+  implicit object BuildSection extends MetaSection[SavedConfiguration, SavedConfiguration, GetBuild] {
+    val name = "fullBuilds"
     def newGet(uuid: String) = GetBuild(uuid)
   }
-  implicit object ArtifactsKey extends KeyMeta[BuildArtifactsOut, RepeatableProjectBuild, GetArtifacts] {
-    val section = SectionSelector("artifactsinfo")
+  implicit object ArtifactsSection extends MetaSection[BuildArtifactsOut, RepeatableProjectBuild, GetArtifacts] {
+    val name = "artifactsData"
     def newGet(uuid: String) = GetArtifacts(uuid)
   }
-  implicit object ExtractKey extends KeyMeta[ExtractedBuildMeta, ExtractionConfig, GetExtract] {
-    val section = SectionSelector("extractions")
+  implicit object ExtractSection extends MetaSection[ExtractedBuildMeta, ExtractionConfig, GetExtract] {
+    val name = "extractions"
     def newGet(uuid: String) = GetExtract(uuid)
   }
 }
 
 /**
  * A Selector is a unique reference to an actual piece of data saved to a repository (at the lower,
- * type-unsafe conceptual level).
+ * type-unsafe conceptual level). Selectors (and Sections) are never serialized/deserialized.
  */
-case class Selector(section: SectionSelector, index: String) {
+case class Selector(section: String, index: String) {
+  testSectionName(section)
   testIndexName(index)
-}
-case class SectionSelector(name: String) {
-  testSectionName(name)
 }
 /**
  * Abstract class for a readable repository of data, indexed by GetKeys.
@@ -201,11 +199,11 @@ abstract class ReadableRepository {
    * parameter for DataType.
    */
   def get[DataType] = new {
-    def apply[KeySource <: { def uuid: String }, Get <: GetKey[DataType]](source: KeySource)(implicit key: Key[DataType, KeySource, Get], ms: Manifest[KeySource], m: Manifest[DataType]): Option[DataType] =
-      apply(getKey(source)(key, ms))(key, m)
-    def apply[KeySource <: { def uuid: String }, Get <: GetKey[DataType]](g: GetKey[DataType])(implicit key: Key[DataType, _, _], m: Manifest[DataType]): Option[DataType] = {
+    def apply[KeySource <: { def uuid: String }, Get <: GetKey[DataType]](source: KeySource)(implicit section: Section[DataType, KeySource, Get], ms: Manifest[KeySource], m: Manifest[DataType]): Option[DataType] =
+      apply(getKey(source)(section, ms))(section, m)
+    def apply[KeySource <: { def uuid: String }, Get <: GetKey[DataType]](g: GetKey[DataType])(implicit section: Section[DataType, _, _], m: Manifest[DataType]): Option[DataType] = {
       lock
-      val data = fetch(key.selector(g)) map { key.streamToData(_)(m) }
+      val data = fetch(section.selector(g)) map { section.streamToData(_)(m) }
       unlock
       data
     }
@@ -215,19 +213,19 @@ abstract class ReadableRepository {
    * data. That is not recommended, as storing somewhere a GetKey that has no associated data in the
    * repository is the equivalent of creating a dangling reference. Use the GetKeys returned by a put(), instead.
    * If the same KeySource type is used for multiple DataTypes, you may have to supply the DataType type parameter explicitly.
-   * Note: this will be a private def, unless it turns out that such a call is really needed. 
+   * Note: this will be a private def, unless it turns out that such a call is really needed in user code.
    */
-  def getKey[DataType] = new {
-    def apply[KeySource <: { def uuid: String }, Get <: GetKey[DataType]](source: KeySource)(implicit key: Key[DataType, KeySource, Get], m: Manifest[KeySource]): Get =
-      key.newGet(source.uuid)
+  private[core] def getKey[DataType] = new {
+    def apply[KeySource <: { def uuid: String }, Get <: GetKey[DataType]](source: KeySource)(implicit section: Section[DataType, KeySource, Get], m: Manifest[KeySource]): Get =
+      section.newGet(source.uuid)
   }
   /**
    * Retrieves the space concretely taken in the repository to store
    * the data indexed by this key. Returns zero if key not present.
    */
-  def getSize[DataType](g: GetKey[DataType])(implicit key: Key[DataType, _, _], m: Manifest[DataType]): Int = {
+  def getSize[DataType](g: GetKey[DataType])(implicit section: Section[DataType, _, _], m: Manifest[DataType]): Int = {
     lock
-    val len = size(key.selector(g))
+    val len = size(section.selector(g))
     unlock
     len
   }
@@ -238,9 +236,9 @@ abstract class ReadableRepository {
    * for the type inference magic to work.
    */
   def enumerate[DataType] = new {
-    def apply[KeySource <: { def uuid: String }, Get <: GetKey[DataType]]()(implicit key: Key[DataType, KeySource, Get]): Seq[Get] = {
+    def apply[KeySource <: { def uuid: String }, Get <: GetKey[DataType]]()(implicit section: Section[DataType, KeySource, Get]): Seq[Get] = {
       lock
-      val seq = scan(key.section) map key.getFromSelector
+      val seq = scan(section.name) map section.getFromSelector
       unlock
       seq
     }
@@ -274,11 +272,11 @@ abstract class ReadableRepository {
    */
   protected def hasData(selector: Selector): Boolean
   /**
-   * scan() checks the given Section, and returns all of the Selectors
+   * scan() checks the given Section, and returns all of its Selectors
    * for which data exist in the repository. If none exist, returns
    * an empty Seq.
    */
-  protected def scan(selector: SectionSelector): Seq[Selector]
+  protected def scan(section: String): Seq[Selector]
   /**
    * lock and unlock are used to protect against concurrent accesses to the repository,
    * and must protect the repository content even if multiple independent processes
@@ -293,7 +291,8 @@ abstract class ReadableRepository {
  * multiple processes simultaneously.
  *
  * To implement a concrete subclass of a Repository, implement
- * the low-level: fetch, store, size, scan, lock, and unlock.
+ * the low-level primitives of ReadableRepository, plus store() and
+ * possibly delete().
  */
 abstract class Repository extends ReadableRepository {
   /**
@@ -308,19 +307,20 @@ abstract class Repository extends ReadableRepository {
    * is already there. If "overwrite" is true, then overwrite regardless.
    */
   def put[DataType, KeySource <: { def uuid: String }, Get <: GetKey[DataType]](data: DataType,
-    keySource: KeySource, overwrite: Boolean = false)(implicit key: Key[DataType, KeySource, Get], m: Manifest[DataType] /*, log:distributed.logging.Logger = distributed.logging.NullLogger */ ): Get = {
+    keySource: KeySource, overwrite: Boolean = false)(implicit section: Section[DataType, KeySource, Get],
+        m: Manifest[DataType] /*, log:distributed.logging.Logger = distributed.logging.NullLogger */ ): Get = {
     lock
     val uuid = keySource.uuid
-    val get = key.newGet(uuid)
+    val get = section.newGet(uuid)
     // short circuit evaluation, hence hasData is called only if not overwrite
-    if (!overwrite && hasData(key.selector(get))) {
-      val previous = fetch(key.selector(get)).get
+    if (!overwrite && hasData(section.selector(get))) {
+      val previous = fetch(section.selector(get)).get
       // compare the two InputStreams
-      val same = IOUtils.contentEquals(key.dataToStream(data), previous)
+      val same = IOUtils.contentEquals(section.dataToStream(data), previous)
       if (!same) sys.error("Internal Repository Error: data already in the repository does not match. Please report")
     }
-    val out = key.dataToStream(data)
-    store(out, key.selector(get))
+    val out = section.dataToStream(data)
+    store(out, section.selector(get))
     unlock
     get
   }
@@ -373,7 +373,7 @@ abstract class Repository extends ReadableRepository {
   /**
    * In case the uuid source and the saved data coincide, a plain single-argument "put(data)" can be used instead.
    */
-  def put[DataType <: { def uuid: String }, Get <: GetKey[DataType]](data: DataType)(implicit key: Key[DataType, DataType, Get], m: Manifest[DataType]): Get = put[DataType, DataType, Get](data, data)
+  def put[DataType <: { def uuid: String }, Get <: GetKey[DataType]](data: DataType)(implicit section: Section[DataType, DataType, Get], m: Manifest[DataType]): Get = put[DataType, DataType, Get](data, data)
 
   // the internal, low-level, non-type-safe equivalent to put()
   /**
@@ -411,8 +411,8 @@ abstract class Repository extends ReadableRepository {
 // Please leave this code where it is.
 private object RepositoryCompilationTest {
   def z(r: Repository, key1: RepeatableProjectBuild, key2: ArtifactSha, key3: BuildArtifactsOut, data: InputStream, f: File) = {
-    // bring all the implicit Keys into scope
-    import keys._
+    // bring all the implicit Sections into scope
+    import sections._
     val rawuuid = RawUUID(f)
 
     // usage examples:
@@ -449,11 +449,11 @@ private object RepositoryCompilationTest {
     val p: Option[BuildArtifactsOut] = r.get(k4)
     val pk2: Option[BuildArtifactsOut] = r.get[BuildArtifactsOut](key1)
     val pk: Option[BuildArtifactsOut] = r.get(r.getKey[BuildArtifactsOut](key1))
-    val l:Seq[GetArtifacts] = r.enumerate[BuildArtifactsOut]()
+    val l: Seq[GetArtifacts] = r.enumerate[BuildArtifactsOut]()
 
     // and now, let's make some mistakes.
     //    val k5:GetArtifacts=r.put(key1, key3)
-    // This should tell you: could not find implicit value for parameter key: Key[RepeatableProjectBuild,BuildArtifactsOut,Get]
+    // This should tell you: could not find implicit value for parameter section: Section[RepeatableProjectBuild,BuildArtifactsOut,Get]
     // which is just perfect, as we accidentally swapped key and data
   }
 }
