@@ -3,6 +3,7 @@ package repo
 package core
 
 import java.io.File
+import distributed.project.model.Utils.{testSectionName,testIndexName}
 import java.util.Date
 import org.apache.commons.io.IOUtils
 import sbt.Path._
@@ -33,8 +34,12 @@ import Utils.{ readValue, writeValue }
  * put() -> returns a GetKey -> get(getKey)
  * 
  * The internal (hidden) lower-level, type-unsafe level of a Repository works by converting
- * the GetKey into a Selector using the information contained into a Key (see below)and then
+ * the GetKey into a Selector using the information contained into a Key (see below) and
  * using the unstructured calls: store(data,selector) / fetch(selector)
+ * 
+ * A low-level selector is a combination of a "section" and an "index". Each section contains
+ * an independent set of data, each item of which can be accessed using an index.
+ * The same index used in different sections refers to two different pieces of data.
  */
 
 ////////////////////
@@ -70,9 +75,6 @@ import Utils.{ readValue, writeValue }
  * as they are used as implicit parameters by put() and get().
  */
 sealed abstract class Key[DataType, KeySource <: { def uuid: String }, Get <: GetKey[DataType]] {
-  /** the concrete keys use "keyName" as a convenience, to generate the path */
-  protected def keyName: String
-  protected def path: Seq[String]
   def newGet(uuid: String): Get
   def dataToStream(d: DataType)(implicit m: Manifest[DataType]): InputStream
   def streamToData(is: InputStream)(implicit m: Manifest[DataType]): DataType
@@ -82,21 +84,20 @@ sealed abstract class Key[DataType, KeySource <: { def uuid: String }, Get <: Ge
   /**
    * From higher level (typed) to lower level (untyped)
    */
-  def selector(get: GetKey[DataType]) = Selector(path :+ get.uuid)
+  def selector(get: GetKey[DataType]) = Selector(section, get.uuid)
   /**
    * Given a low-level Selector to an element, recreates the
    * corresponding high-level GetKey. This call is used in scan(),
    * in order to generate the list of GetKeys, given the list of
    * low-level Selectors.
    */
-  def getFromSelector(selector: Selector) = newGet(selector.path.last)
+  def getFromSelector(selector: Selector) = newGet(selector.index)
   /**
-   * In order to implement enumerate() (the low-level equivalent to scan()),
-   * we need a Selector to the parent of all Selectors that contain data
+   * In order to implement scan() (the low-level equivalent to enumerate()),
+   * we need the Selector section that contain the data
    * of the kind supported by this Key.
-   * "scanSelector" returns such a Selector.
    */
-  def scanSelector = Selector(path)
+  def section: SectionSelector
 }
 
 /**
@@ -112,8 +113,7 @@ case class RawUUID(f: File) {
  */
 package object keys {
   implicit object RawKey extends Key[InputStream, RawUUID, GetRaw] {
-    private def keyName = "raw"
-    def path = Seq(keyName)
+    val section = SectionSelector("raw")
     def newGet(uuid: String) = GetRaw(uuid)
     def dataToStream(d: InputStream)(implicit m: Manifest[InputStream]): InputStream = d
     def streamToData(is: InputStream)(implicit m: Manifest[InputStream]) = is
@@ -126,7 +126,6 @@ package object keys {
    */
   private[keys] sealed abstract class KeyMeta[DataType, KeySource <: { def uuid: String }, Get <: GetKey[DataType]]
     extends Key[DataType, KeySource, Get] {
-    def path = Seq("meta", keyName)
     def streamToData(is: InputStream)(implicit m: Manifest[DataType]): DataType =
       readValue[DataType](new GZIPInputStream(new BufferedInputStream(is))) // GZIPInputStream will decompress
     def dataToStream(d: DataType)(implicit m: Manifest[DataType]): InputStream = {
@@ -149,38 +148,33 @@ package object keys {
     }
   }
   implicit object ProjectKey extends KeyMeta[RepeatableProjectBuild, RepeatableProjectBuild, GetProject] {
-    def keyName = "project"
+    val section = SectionSelector("projects")
     def newGet(uuid: String) = GetProject(uuid)
   }
   implicit object BuildKey extends KeyMeta[SavedConfiguration, SavedConfiguration, GetBuild] {
-    def keyName = "build"
+    val section = SectionSelector("builds")
     def newGet(uuid: String) = GetBuild(uuid)
   }
   implicit object ArtifactsKey extends KeyMeta[BuildArtifactsOut, RepeatableProjectBuild, GetArtifacts] {
-    def keyName = "artifacts"
+    val section = SectionSelector("artifactsinfo")
     def newGet(uuid: String) = GetArtifacts(uuid)
   }
   implicit object ExtractKey extends KeyMeta[ExtractedBuildMeta, ExtractionConfig, GetExtract] {
-    def keyName = "extract"
+    val section = SectionSelector("extractions")
     def newGet(uuid: String) = GetExtract(uuid)
   }
 }
 
 /**
- * A Selector is a full path to an actual piece of data saved to a repository (at the lower,
- * type-unsafe conceptual level). It is implemented as a Seq[String], where each String is
- * a component of a path.
+ * A Selector is a unique reference to an actual piece of data saved to a repository (at the lower,
+ * type-unsafe conceptual level).
  */
-case class Selector(path: Seq[String]) {
-  private val validChars = (('a' to 'z') ++ ('0' to '9')).toSet
-  path foreach { name =>
-    val lower = name.toLowerCase
-    if (!(lower forall (c => validChars(c)))) {
-      sys.error("Unexpected: Selector components can only contain letters and numbers, found: \"" + name + "\".")
-    }
-  }
+case class Selector(section: SectionSelector, index: String) {
+  testIndexName(index)
 }
-
+case class SectionSelector(name: String) {
+  testSectionName(name)
+}
 /**
  * Abstract class for a readable repository of data, indexed by GetKeys.
  * The high-level, type-safe interface (get/size/scan) is also safe to use
@@ -221,6 +215,7 @@ abstract class ReadableRepository {
    * data. That is not recommended, as storing somewhere a GetKey that has no associated data in the
    * repository is the equivalent of creating a dangling reference. Use the GetKeys returned by a put(), instead.
    * If the same KeySource type is used for multiple DataTypes, you may have to supply the DataType type parameter explicitly.
+   * Note: this will be a private def, unless it turns out that such a call is really needed. 
    */
   def getKey[DataType] = new {
     def apply[KeySource <: { def uuid: String }, Get <: GetKey[DataType]](source: KeySource)(implicit key: Key[DataType, KeySource, Get], m: Manifest[KeySource]): Get =
@@ -237,13 +232,18 @@ abstract class ReadableRepository {
     len
   }
   /**
-   * Get the list of keys for items of this DataType currently in the repo
+   * Get the list of keys for items of this DataType currently in the repo. You will need to provide
+   * the DataType type parameter explicitly, as there are no regular arguments to infer it from.
+   * The form for the invocation is: "enumerate[Type]()". It needs an empty argument list at the end
+   * for the type inference magic to work.
    */
-  def enumerate[DataType](implicit key: Key[DataType, _, GetKey[DataType]]): Seq[GetKey[DataType]] = {
-    lock
-    val seq = scan(key.scanSelector) map key.getFromSelector
-    unlock
-    seq
+  def enumerate[DataType] = new {
+    def apply[KeySource <: { def uuid: String }, Get <: GetKey[DataType]]()(implicit key: Key[DataType, KeySource, Get]): Seq[Get] = {
+      lock
+      val seq = scan(key.section) map key.getFromSelector
+      unlock
+      seq
+    }
   }
 
   /*
@@ -262,6 +262,7 @@ abstract class ReadableRepository {
    * Note that there is no corresponding high-level call: date() and delete() will only be
    * used inside a lock/unlock section from a GC operation (whose details we will elaborate later).
    */
+  // Note: should we split atime and ctime? For a proxy, atime might be useful.
   protected def date(selector: Selector): Option[Date]
   /**
    * Return, if known, the actual space occupied in the Repository by the data stored
@@ -273,17 +274,11 @@ abstract class ReadableRepository {
    */
   protected def hasData(selector: Selector): Boolean
   /**
-   * scan() checks under the given Selector path, and returns all the immediate
-   * subselectors for which data exist in the repository. If no subselectors exist, return
+   * scan() checks the given Section, and returns all of the Selectors
+   * for which data exist in the repository. If none exist, returns
    * an empty Seq.
-   * Only subselectors containing data are returned. Hence, if you only have data in
-   * Seq["a","b","c"] and you scan Seq["a"], you will /not/ get "b". Selectors do not
-   * work like directories, and there is currently no provision for "traversing" all the raw data
-   * in a repository. The end user should not use see, or attempt to use selectors and the low
-   * level interface anyway. However, if you enumerate() all the DataTypes for which you you ever
-   * put in data, you will indeed find all the content in the repository.
    */
-  protected def scan(selector: Selector): Seq[Selector]
+  protected def scan(selector: SectionSelector): Seq[Selector]
   /**
    * lock and unlock are used to protect against concurrent accesses to the repository,
    * and must protect the repository content even if multiple independent processes
@@ -394,10 +389,15 @@ abstract class Repository extends ReadableRepository {
   /**
    * delete() removes the data at this selector, if any.
    * If no data is present, do nothing; if you need to check whether
-   * any data exists, use hasData() beforehand.
+   * any data exists, use hasData() beforehand. If this repository
+   * is a cache or proxy for some other repository, do not delete anything
+   * in the original.
    * This low-level method should be implemented if possible, or it should
    * do nothing if unsupported: it will be used to implement garbage collection
-   * for repositories at some point in the future.
+   * for repositories at some point in the future. Considering the potential for
+   * race conditions, there is no corresponding high-level "delete()": this
+   * primitive will typically only be called as part of a more complicated transaction,
+   * in order to preserve the repository integrity.
    */
   protected def delete(selector: Selector): Unit
 }
@@ -413,13 +413,14 @@ private object RepositoryCompilationTest {
   def z(r: Repository, key1: RepeatableProjectBuild, key2: ArtifactSha, key3: BuildArtifactsOut, data: InputStream, f: File) = {
     // bring all the implicit Keys into scope
     import keys._
+    val rawuuid = RawUUID(f)
 
     // usage examples:
 
-    val ak2 = r.put(data, RawUUID(f))
+    val ak2 = r.put(data, rawuuid)
     val am = r.get(ak2)
-    val amk2 = r.get(RawUUID(f))
-    val amk = r.get(r.getKey(RawUUID(f)))
+    val amk2 = r.get(rawuuid)
+    val amk = r.get(r.getKey(rawuuid))
     val ak1 = r.put(key1, key1)
     val an = r.get(ak1)
     val ank2 = r.get[RepeatableProjectBuild](key1)
@@ -430,13 +431,14 @@ private object RepositoryCompilationTest {
     val ap = r.get(ak4)
     val apk2 = r.get[BuildArtifactsOut](key1)
     val apk = r.get(r.getKey[BuildArtifactsOut](key1))
+    val al = r.enumerate[BuildArtifactsOut]()
 
     // same examples, but let's also check that all the types are correct:
 
-    val k2: GetRaw = r.put(data, RawUUID(f))
+    val k2: GetRaw = r.put(data, rawuuid)
     val m: Option[InputStream] = r.get(k2)
-    val mk2: Option[InputStream] = r.get(RawUUID(f))
-    val mk: Option[InputStream] = r.get(r.getKey(RawUUID(f)))
+    val mk2: Option[InputStream] = r.get(rawuuid)
+    val mk: Option[InputStream] = r.get(r.getKey(rawuuid))
     val k1: GetProject = r.put(key1, key1)
     val n: Option[RepeatableProjectBuild] = r.get(k1)
     val nk2: Option[RepeatableProjectBuild] = r.get[RepeatableProjectBuild](key1)
@@ -447,6 +449,7 @@ private object RepositoryCompilationTest {
     val p: Option[BuildArtifactsOut] = r.get(k4)
     val pk2: Option[BuildArtifactsOut] = r.get[BuildArtifactsOut](key1)
     val pk: Option[BuildArtifactsOut] = r.get(r.getKey[BuildArtifactsOut](key1))
+    val l:Seq[GetArtifacts] = r.enumerate[BuildArtifactsOut]()
 
     // and now, let's make some mistakes.
     //    val k5:GetArtifacts=r.put(key1, key3)

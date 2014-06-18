@@ -9,7 +9,7 @@ import project.resolve.ProjectResolver
 import model.{ ProjectConfigAndExtracted, ProjectBuildConfig, ExtractedBuildMeta, SeqDepsModifiers }
 import model.{ ExtractionOK, ExtractionOutcome, ExtractionFailed, ExtractionConfig, DepsModifiers }
 import logging._
-import repo.core.Repository
+import distributed.repo.core.Repository
 import distributed.project.model.Utils.{ writeValue, readValue }
 import distributed.logging.Logger.prepareLogMsg
 import org.apache.ivy.core.module.id.ModuleId
@@ -109,7 +109,7 @@ class Extractor(
 
   private def cacheExtract(config: ExtractionConfig, extract: ExtractedBuildMeta, logger: logging.Logger): Unit = {
       logger.debug("Putting extraction information into: " + repository)
-      repository.put(extract,config)
+      repository.put(extract,config) // GetExtract is not saved
     }
 
   def cachedExtractOr(config: ExtractionConfig, logger: logging.Logger)(f: => ExtractionOutcome): ExtractionOutcome =

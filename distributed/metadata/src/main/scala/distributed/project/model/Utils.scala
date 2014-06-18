@@ -107,6 +107,8 @@ object Utils {
   }
   def testProjectName(name: String) = testName(name, dotsAllowed = false)
   def testSpaceName(name: String) = testName(name, dotsAllowed = true)
+  def testSectionName(name: String) = testName(name, dotsAllowed = true)
+  def testIndexName(name: String) = testName(name, dotsAllowed = true)
 
   // spaces-related utilities
 

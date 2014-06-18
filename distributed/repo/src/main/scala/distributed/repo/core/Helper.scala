@@ -63,8 +63,8 @@ object LocalRepoHelper {
     files foreach {
       case artSha@ArtifactSha(sha, location) =>
         log.debug("Checking file: " + location)
-        // we need an InputStream, rather than FileInputStream, because of the implicit "key" parameter
         val artifactFile = localRepo / location
+        // we need exactly an InputStream, rather than a FileInputStream, because of the implicit "key" parameter
         val stream:InputStream = new java.io.FileInputStream(artifactFile)
         val getKey = remote.put(stream, RawUUID(artifactFile))
     }
