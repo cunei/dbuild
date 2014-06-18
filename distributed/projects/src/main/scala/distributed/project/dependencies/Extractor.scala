@@ -107,28 +107,20 @@ class Extractor(
     }
   }
 
-  private def makeExtractKey(config: ExtractionConfig) =
-    "meta/extract/" + config.uuid
-
-  private def cacheExtract(config: ExtractionConfig, extract: ExtractedBuildMeta, logger: logging.Logger): Unit =
-    IO.withTemporaryFile("extract", config.uuid) { file =>
-      IO.write(file, writeValue(extract))
+  private def cacheExtract(config: ExtractionConfig, extract: ExtractedBuildMeta, logger: logging.Logger): Unit = {
       logger.debug("Putting extraction information into: " + repository)
-      repository.put(makeExtractKey(config), file)
+      repository.put(extract,config)
     }
 
   def cachedExtractOr(config: ExtractionConfig, logger: logging.Logger)(f: => ExtractionOutcome): ExtractionOutcome =
-    try {
-      val key = makeExtractKey(config)
-      val file = repository.get(key)
-      logger.debug("Dependencies are cached!")
-      val deps = readValue[ExtractedBuildMeta](file)
-      logger.debug("Dependencies = " + writeValue(deps))
-      val baseLevelProjInfo = deps.getHead
-      if (baseLevelProjInfo.subproj.nonEmpty)
-        logger.info(baseLevelProjInfo.subproj.mkString("The following subprojects will be built in project " + config.buildConfig.name + ": ", ", ", ""))
-      ExtractionOK(config.buildConfig.name, Seq.empty, Seq(ProjectConfigAndExtracted(config.buildConfig, deps)))
-    } catch {
-      case _: Exception => f
+    repository.get(config) match {
+      case Some(deps) =>
+        logger.debug("Dependencies are cached!")
+        logger.debug("Dependencies = " + writeValue(deps))
+        val baseLevelProjInfo = deps.getHead
+        if (baseLevelProjInfo.subproj.nonEmpty)
+          logger.info(baseLevelProjInfo.subproj.mkString("The following subprojects will be built in project " + config.buildConfig.name + ": ", ", ", ""))
+        ExtractionOK(config.buildConfig.name, Seq.empty, Seq(ProjectConfigAndExtracted(config.buildConfig, deps)))
+      case None => f
     }
 }

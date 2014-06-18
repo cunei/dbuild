@@ -64,8 +64,9 @@ object LocalRepoHelper {
       case artSha@ArtifactSha(sha, location) =>
         log.debug("Checking file: " + location)
         // we need an InputStream, rather than FileInputStream, because of the implicit "key" parameter
-        val stream:InputStream = new java.io.FileInputStream(localRepo / location)
-        val getKey = remote.put(stream, artSha)
+        val artifactFile = localRepo / location
+        val stream:InputStream = new java.io.FileInputStream(artifactFile)
+        val getKey = remote.put(stream, RawUUID(artifactFile))
     }
   }
 
@@ -103,7 +104,7 @@ object LocalRepoHelper {
 
   def materializeProjectMetadata(gp: GetProject, ga: GetArtifacts, remote: ReadableRepository): ProjectArtifactInfo = {
     val projectMeta = remote.get(gp) getOrElse sys.error("Unable to read the project info from repository")
-    val artifactsMeta = remote.get(ga) getOrElse sys.error("Unable to read the artifacts info from repository")
+    val artifactsMeta = remote.get(ga) getOrElse sys.error("Unable to read the artifacts info: this project may not have completed compilation or testing.")
     ProjectArtifactInfo(projectMeta, artifactsMeta)
   }
 

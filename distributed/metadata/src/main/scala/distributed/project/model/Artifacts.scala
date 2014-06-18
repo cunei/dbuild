@@ -20,7 +20,7 @@ case class SbtPluginAttrs(sbtVersion: String, scalaVersion: String)
  *
  * We use this to push files into artifactory and retrieve them as a workaround now.
  */
-case class ArtifactSha(uuid: String, location: String)
+case class ArtifactSha(uuid: GetRaw, location: String)
 
 /**
  * This is the metadata a project generates after building.  We can deploy this to our repository as

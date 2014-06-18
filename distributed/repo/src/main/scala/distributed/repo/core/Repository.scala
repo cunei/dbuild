@@ -99,11 +99,20 @@ sealed abstract class Key[DataType, KeySource <: { def uuid: String }, Get <: Ge
    */
   def scanSelector = Selector(path)
 }
+
+/**
+ * In order to get a sha for a raw file/inputstream that contains an artifact,
+ * wrap it into a RawUUID. This class is not serialized.
+ */ 
+case class RawUUID(f:File) {
+  def uuid = hashing.files sha1 f
+}
+
 /**
  * Use "import keys._" in client code, to bring the implicit repository Keys into scope.
  */
 package object keys {
-  implicit object RawKey extends Key[InputStream, ArtifactSha, GetRaw] {
+  implicit object RawKey extends Key[InputStream, RawUUID, GetRaw] {
     private def keyName = "raw"
     def path = Seq(keyName)
     def newGet(uuid: String) = GetRaw(uuid)
@@ -116,8 +125,8 @@ package object keys {
    * form is simple textual JSON, we can automatically filter it through a gzip compressor,
    * in order to save space.
    */
-  private[keys] sealed abstract class KeyMeta[DataType, Source <: { def uuid: String }, Get <: GetKey[DataType]]
-    extends Key[DataType, Source, Get] {
+  private[keys] sealed abstract class KeyMeta[DataType, KeySource <: { def uuid: String }, Get <: GetKey[DataType]]
+    extends Key[DataType, KeySource, Get] {
     def path = Seq("meta", keyName)
     def streamToData(is: InputStream)(implicit m: Manifest[DataType]): DataType =
       readValue[DataType](new GZIPInputStream(new BufferedInputStream(is))) // GZIPInputStream will decompress
@@ -152,7 +161,7 @@ package object keys {
     def keyName = "artifacts"
     def newGet(uuid: String) = GetArtifacts(uuid)
   }
-  implicit object ExtractKey extends KeyMeta[ExtractionConfig, ExtractionConfig, GetExtract] {
+  implicit object ExtractKey extends KeyMeta[ExtractedBuildMeta, ExtractionConfig, GetExtract] {
     def keyName = "extract"
     def newGet(uuid: String) = GetExtract(uuid)
   }
@@ -163,7 +172,15 @@ package object keys {
  * type-unsafe conceptual level). It is implemented as a Seq[String], where each String is
  * a component of a path.
  */
-case class Selector(path: Seq[String])
+case class Selector(path: Seq[String]) {
+  private val validChars = (('a' to 'z') ++ ('0' to '9')).toSet
+  path foreach { name =>
+    val lower = name.toLowerCase
+    if (!(lower forall (c => validChars(c)))) {
+      sys.error("Unexpected: Selector components can only contain letters and numbers, found: \"" + name + "\".")
+    }
+  }
+}
 
 /**
  * Abstract class for a readable repository of data, indexed by GetKeys.
@@ -182,6 +199,25 @@ abstract class ReadableRepository {
     val data = fetch(key.selector(g)) map key.streamToData
     unlock
     data
+  }
+  /**
+   * If you do not have a GetKey, but you have an instance of a KeySource, you can use that to retrieve the
+   * correct GetKey. You may have to supply the DataType type parameter explicitly in case the same KeySource
+   * type is used for multiple DataTypes.
+   */
+  /*
+   * Implementation trick: getKey presents itself as a one-argument function that is parametric on a single
+   * type parameter. In reality, getKey returns an instance of a class whose apply() will apply the single
+   * parameter, returning an instance of GetKey. The advantage is that the type parameters KeySource and
+   * Get are always inferred automatically, and it is only necessary to specify (when needed) the type
+   * parameter for DataType.
+   */
+  def getKey[DataType] = new {
+    def apply[KeySource <: { def uuid: String }, Get <: GetKey[DataType]](source: KeySource)(implicit key: Key[DataType, KeySource, Get], m: Manifest[KeySource]): Get =
+      key.newGet(source.uuid)
+  }
+  private def getKey1[DataType, KeySource <: { def uuid: String }, Get <: GetKey[DataType]](source: KeySource)(implicit key: Key[DataType, KeySource, Get], m: Manifest[KeySource]): Get = {
+    key.newGet(source.uuid)
   }
   /**
    * Retrieves the space concretely taken in the repository to store
@@ -366,32 +402,41 @@ abstract class Repository extends ReadableRepository {
 // import distributed.repo.core.keys._
 
 
-// This is dead code, but it is useful to check that it compiles successfully;
-// please leave it in.
+// This is technically dead code, but it is useful to leave it in an compile it with
+// the rest, in order to make sure that all its test calls compile successfully.
+// Please leave this code where it is.
 private object RepositoryCompilationTest {
-  def z(r: Repository, key1: RepeatableProjectBuild, key2: ArtifactSha, key3: BuildArtifactsOut, data: InputStream) = {
+  def z(r: Repository, key1: RepeatableProjectBuild, key2: ArtifactSha, key3: BuildArtifactsOut, data: InputStream, f:File) = {
     // bring all the implicit Keys into scope
     import keys._
 
     // usage examples:
-    val ak2 = r.put(data, key2)
+
+    val ak2 = r.put(data, RawUUID(f))
     val am = r.get(ak2)
+    val amk = r.get(r.getKey(RawUUID(f)))
     val ak1 = r.put(key1, key1)
     val an = r.get(ak1)
+    val ank = r.get(r.getKey[RepeatableProjectBuild](key1))
     val ak3 = r.put(key1)
     val ao = r.get(ak3)
     val ak4 = r.put(key3, key1)
     val ap = r.get(ak4)
+    val apk = r.get(r.getKey[BuildArtifactsOut](key1))
 
     // same examples, but let's also check that all the types are correct:
-    val k2: GetRaw = r.put(data, key2)
+
+    val k2: GetRaw = r.put(data, RawUUID(f))
     val m: Option[InputStream] = r.get(k2)
+    val mk: Option[InputStream] = r.get(r.getKey(RawUUID(f)))
     val k1: GetProject = r.put(key1, key1)
     val n: Option[RepeatableProjectBuild] = r.get(k1)
+    val nk: Option[RepeatableProjectBuild] = r.get(r.getKey[RepeatableProjectBuild](key1))
     val k3: GetProject = r.put(key1)
     val o: Option[RepeatableProjectBuild] = r.get(k3)
     val k4: GetArtifacts = r.put(key3, key1)
     val p: Option[BuildArtifactsOut] = r.get(k4)
+    val pk: Option[BuildArtifactsOut] = r.get(r.getKey[BuildArtifactsOut](key1))
 
     // and now, let's make some mistakes.
     //    val k5:GetArtifacts=r.put(key1, key3)
