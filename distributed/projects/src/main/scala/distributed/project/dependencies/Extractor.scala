@@ -113,7 +113,7 @@ class Extractor(
     }
 
   def cachedExtractOr(config: ExtractionConfig, logger: logging.Logger)(f: => ExtractionOutcome): ExtractionOutcome =
-    repository.get(config) match {
+    repository.get(getKey(config)) match {
       case Some(deps) =>
         logger.debug("Dependencies are cached!")
         logger.debug("Dependencies = " + writeValue(deps))

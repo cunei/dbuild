@@ -13,7 +13,7 @@ import java.io.BufferedInputStream
 import java.util.zip.GZIPInputStream
 import java.util.zip.GZIPOutputStream
 import project.model._
-import Utils.{readValue,writeValue}
+import Utils.{ readValue, writeValue }
 
 /*
  * This implementation of repositories operates on two levels. Internally, all concrete
@@ -50,7 +50,6 @@ import Utils.{readValue,writeValue}
 
 // sealed abstract class GetKey[DataType] extends { def uuid: String }
 
-
 /**
  * A Key data structure contains the logic needed to interface the higher, type-safe
  * level of repositories with its lower, type-unsafe implementation.
@@ -66,7 +65,7 @@ import Utils.{readValue,writeValue}
  * uuid: in some cases (raw files for instance, or BuildArtifactsOuts), the uuid depends
  * on a related piece of data of a different kind. That is represented by KeySource, which
  * must be able to provide the needed uuid.
- * 
+ *
  * In theory, all Key methods should be private to Repository. Keys themselves should be public,
  * as they are used as implicit parameters by put() and get().
  */
@@ -75,7 +74,7 @@ sealed abstract class Key[DataType, KeySource <: { def uuid: String }, Get <: Ge
   protected def keyName: String
   protected def path: Seq[String]
   def newGet(uuid: String): Get
-  def dataToStream(d: DataType)(implicit m:Manifest[DataType]): InputStream
+  def dataToStream(d: DataType)(implicit m: Manifest[DataType]): InputStream
   def streamToData(is: InputStream)(implicit m: Manifest[DataType]): DataType
   /*
  * Selector-related utils
@@ -103,8 +102,8 @@ sealed abstract class Key[DataType, KeySource <: { def uuid: String }, Get <: Ge
 /**
  * In order to get a sha for a raw file/inputstream that contains an artifact,
  * wrap it into a RawUUID. This class is not serialized.
- */ 
-case class RawUUID(f:File) {
+ */
+case class RawUUID(f: File) {
   def uuid = hashing.files sha1 f
 }
 
@@ -116,7 +115,7 @@ package object keys {
     private def keyName = "raw"
     def path = Seq(keyName)
     def newGet(uuid: String) = GetRaw(uuid)
-    def dataToStream(d: InputStream)(implicit m:Manifest[InputStream]): InputStream = d
+    def dataToStream(d: InputStream)(implicit m: Manifest[InputStream]): InputStream = d
     def streamToData(is: InputStream)(implicit m: Manifest[InputStream]) = is
   }
   /**
@@ -130,7 +129,7 @@ package object keys {
     def path = Seq("meta", keyName)
     def streamToData(is: InputStream)(implicit m: Manifest[DataType]): DataType =
       readValue[DataType](new GZIPInputStream(new BufferedInputStream(is))) // GZIPInputStream will decompress
-    def dataToStream(d: DataType)(implicit m:Manifest[DataType]): InputStream =  {
+    def dataToStream(d: DataType)(implicit m: Manifest[DataType]): InputStream = {
       val asString = writeValue(d)
       val asBytes = asString.getBytes()
       val pipeOut = new java.io.PipedOutputStream()
@@ -138,7 +137,7 @@ package object keys {
       zip.write(asBytes)
       zip.close()
       new java.io.PipedInputStream(pipeOut)
-/*
+      /*
       // Alternative, without pipes but using a further byte array.
       // Might be faster, since most metadata chunks are small.
       val bos = new java.io.ByteArrayOutputStream()
@@ -194,30 +193,38 @@ abstract class ReadableRepository {
   /**
    * Retrieves the contents stored at a given key, if present.
    */
-  def get[DataType](g: GetKey[DataType])(implicit key: Key[DataType, _, _], m: Manifest[DataType]): Option[DataType] = {
-    lock
-    val data = fetch(key.selector(g)) map key.streamToData
-    unlock
-    data
-  }
   /**
-   * If you do not have a GetKey, but you have an instance of a KeySource, you can use that to retrieve the
-   * correct GetKey. You may have to supply the DataType type parameter explicitly in case the same KeySource
-   * type is used for multiple DataTypes.
+   * Use get(getKey) to retrieve data from the repository.
+   * If you do not have a GetKey, but you have an instance of a KeySource, you can use that to retrieve your
+   * data as well. In that case, you may have to supply the DataType type parameter explicitly if the
+   * KeySource type you are using is used to access different DataTypes.
    */
   /*
    * Implementation trick: getKey presents itself as a one-argument function that is parametric on a single
-   * type parameter. In reality, getKey returns an instance of a class whose apply() will apply the single
-   * parameter, returning an instance of GetKey. The advantage is that the type parameters KeySource and
-   * Get are always inferred automatically, and it is only necessary to specify (when needed) the type
+   * type parameter. In reality, get returns an instance of a class whose apply() will apply the single
+   * parameter, returning the needed data. The advantage is that the type parameters KeySource and
+   * Get are always inferred automatically, and it is only necessary to specify (when needed) the single type
    * parameter for DataType.
+   */
+  def get[DataType] = new {
+    def apply[KeySource <: { def uuid: String }, Get <: GetKey[DataType]](source: KeySource)(implicit key: Key[DataType, KeySource, Get], ms: Manifest[KeySource], m: Manifest[DataType]): Option[DataType] =
+      apply(getKey(source)(key, ms))(key, m)
+    def apply[KeySource <: { def uuid: String }, Get <: GetKey[DataType]](g: GetKey[DataType])(implicit key: Key[DataType, _, _], m: Manifest[DataType]): Option[DataType] = {
+      lock
+      val data = fetch(key.selector(g)) map { key.streamToData(_)(m) }
+      unlock
+      data
+    }
+  }
+  /**
+   * If needed, you can speculatively obtain a GetKey directly from a given KeySource, without storing any
+   * data. That is not recommended, as storing somewhere a GetKey that has no associated data in the
+   * repository is the equivalent of creating a dangling reference. Use the GetKeys returned by a put(), instead.
+   * If the same KeySource type is used for multiple DataTypes, you may have to supply the DataType type parameter explicitly.
    */
   def getKey[DataType] = new {
     def apply[KeySource <: { def uuid: String }, Get <: GetKey[DataType]](source: KeySource)(implicit key: Key[DataType, KeySource, Get], m: Manifest[KeySource]): Get =
       key.newGet(source.uuid)
-  }
-  private def getKey1[DataType, KeySource <: { def uuid: String }, Get <: GetKey[DataType]](source: KeySource)(implicit key: Key[DataType, KeySource, Get], m: Manifest[KeySource]): Get = {
-    key.newGet(source.uuid)
   }
   /**
    * Retrieves the space concretely taken in the repository to store
@@ -244,7 +251,7 @@ abstract class ReadableRepository {
    * listed below. fetch(), size() and scan(), etc. need not be thread-safe: lock and unlock are
    * called to lock the repository when needed.
    */
- 
+
   /**
    * Read from the repository the data stored at Selector. If no data is present, return None.
    */
@@ -306,8 +313,7 @@ abstract class Repository extends ReadableRepository {
    * is already there. If "overwrite" is true, then overwrite regardless.
    */
   def put[DataType, KeySource <: { def uuid: String }, Get <: GetKey[DataType]](data: DataType,
-      keySource: KeySource, overwrite: Boolean = false)(implicit key: Key[DataType, KeySource, Get], m: Manifest[DataType]
-          /*, log:distributed.logging.Logger = distributed.logging.NullLogger */): Get = {
+    keySource: KeySource, overwrite: Boolean = false)(implicit key: Key[DataType, KeySource, Get], m: Manifest[DataType] /*, log:distributed.logging.Logger = distributed.logging.NullLogger */ ): Get = {
     lock
     val uuid = keySource.uuid
     val get = key.newGet(uuid)
@@ -323,7 +329,7 @@ abstract class Repository extends ReadableRepository {
     unlock
     get
   }
-  
+
   // TODO: Add logging, following this scheme (more or less):
   /*
   {
@@ -369,7 +375,6 @@ abstract class Repository extends ReadableRepository {
     }
 */
 
-  
   /**
    * In case the uuid source and the saved data coincide, a plain single-argument "put(data)" can be used instead.
    */
@@ -394,19 +399,18 @@ abstract class Repository extends ReadableRepository {
    * do nothing if unsupported: it will be used to implement garbage collection
    * for repositories at some point in the future.
    */
-  protected def delete(selector: Selector) : Unit
+  protected def delete(selector: Selector): Unit
 }
 
 // in client code use:
 // import distributed.repo.core
 // import distributed.repo.core.keys._
 
-
 // This is technically dead code, but it is useful to leave it in an compile it with
 // the rest, in order to make sure that all its test calls compile successfully.
 // Please leave this code where it is.
 private object RepositoryCompilationTest {
-  def z(r: Repository, key1: RepeatableProjectBuild, key2: ArtifactSha, key3: BuildArtifactsOut, data: InputStream, f:File) = {
+  def z(r: Repository, key1: RepeatableProjectBuild, key2: ArtifactSha, key3: BuildArtifactsOut, data: InputStream, f: File) = {
     // bring all the implicit Keys into scope
     import keys._
 
@@ -414,28 +418,34 @@ private object RepositoryCompilationTest {
 
     val ak2 = r.put(data, RawUUID(f))
     val am = r.get(ak2)
+    val amk2 = r.get(RawUUID(f))
     val amk = r.get(r.getKey(RawUUID(f)))
     val ak1 = r.put(key1, key1)
     val an = r.get(ak1)
+    val ank2 = r.get[RepeatableProjectBuild](key1)
     val ank = r.get(r.getKey[RepeatableProjectBuild](key1))
     val ak3 = r.put(key1)
     val ao = r.get(ak3)
     val ak4 = r.put(key3, key1)
     val ap = r.get(ak4)
+    val apk2 = r.get[BuildArtifactsOut](key1)
     val apk = r.get(r.getKey[BuildArtifactsOut](key1))
 
     // same examples, but let's also check that all the types are correct:
 
     val k2: GetRaw = r.put(data, RawUUID(f))
     val m: Option[InputStream] = r.get(k2)
+    val mk2: Option[InputStream] = r.get(RawUUID(f))
     val mk: Option[InputStream] = r.get(r.getKey(RawUUID(f)))
     val k1: GetProject = r.put(key1, key1)
     val n: Option[RepeatableProjectBuild] = r.get(k1)
+    val nk2: Option[RepeatableProjectBuild] = r.get[RepeatableProjectBuild](key1)
     val nk: Option[RepeatableProjectBuild] = r.get(r.getKey[RepeatableProjectBuild](key1))
     val k3: GetProject = r.put(key1)
     val o: Option[RepeatableProjectBuild] = r.get(k3)
     val k4: GetArtifacts = r.put(key3, key1)
     val p: Option[BuildArtifactsOut] = r.get(k4)
+    val pk2: Option[BuildArtifactsOut] = r.get[BuildArtifactsOut](key1)
     val pk: Option[BuildArtifactsOut] = r.get(r.getKey[BuildArtifactsOut](key1))
 
     // and now, let's make some mistakes.
