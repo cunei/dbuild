@@ -169,7 +169,7 @@ package object sections {
  * A Selector is a unique reference to an actual piece of data saved to a repository (at the lower,
  * type-unsafe conceptual level). Selectors (and Sections) are never serialized/deserialized.
  */
-case class Selector(section: String, index: String) {
+private[core] case class Selector(section: String, index: String) {
   testSectionName(section)
   testIndexName(index)
 }
@@ -198,7 +198,7 @@ abstract class ReadableRepository {
    * Get are always inferred automatically, and it is only necessary to specify (when needed) the single type
    * parameter for DataType.
    */
-  def get[DataType] = new {
+  final def get[DataType] = new {
     def apply[KeySource <: { def uuid: String }, Get <: GetKey[DataType]](source: KeySource)(implicit section: Section[DataType, KeySource, Get], ms: Manifest[KeySource], m: Manifest[DataType]): Option[DataType] =
       apply(getKey(source)(section, ms))(section, m)
     def apply[KeySource <: { def uuid: String }, Get <: GetKey[DataType]](g: GetKey[DataType])(implicit section: Section[DataType, _, _], m: Manifest[DataType]): Option[DataType] = {
@@ -215,7 +215,7 @@ abstract class ReadableRepository {
    * If the same KeySource type is used for multiple DataTypes, you may have to supply the DataType type parameter explicitly.
    * Note: this will be a private def, unless it turns out that such a call is really needed in user code.
    */
-  private[core] def getKey[DataType] = new {
+  final private[core] def getKey[DataType] = new {
     def apply[KeySource <: { def uuid: String }, Get <: GetKey[DataType]](source: KeySource)(implicit section: Section[DataType, KeySource, Get], m: Manifest[KeySource]): Get =
       section.newGet(source.uuid)
   }
@@ -223,7 +223,7 @@ abstract class ReadableRepository {
    * Retrieves the space concretely taken in the repository to store
    * the data indexed by this key. Returns zero if key not present.
    */
-  def getSize[DataType](g: GetKey[DataType])(implicit section: Section[DataType, _, _], m: Manifest[DataType]): Int = {
+  final def getSize[DataType](g: GetKey[DataType])(implicit section: Section[DataType, _, _], m: Manifest[DataType]): Int = {
     lock
     val len = size(section.selector(g))
     unlock
@@ -235,7 +235,7 @@ abstract class ReadableRepository {
    * The form for the invocation is: "enumerate[Type]()". It needs an empty argument list at the end
    * for the type inference magic to work.
    */
-  def enumerate[DataType] = new {
+  final def enumerate[DataType] = new {
     def apply[KeySource <: { def uuid: String }, Get <: GetKey[DataType]]()(implicit section: Section[DataType, KeySource, Get]): Seq[Get] = {
       lock
       val seq = scan(section.name) map section.getFromSelector
@@ -306,7 +306,7 @@ abstract class Repository extends ReadableRepository {
    * already be in will result in the data being verified against what
    * is already there. If "overwrite" is true, then overwrite regardless.
    */
-  def put[DataType, KeySource <: { def uuid: String }, Get <: GetKey[DataType]](data: DataType,
+  final def put[DataType, KeySource <: { def uuid: String }, Get <: GetKey[DataType]](data: DataType,
     keySource: KeySource, overwrite: Boolean = false)(implicit section: Section[DataType, KeySource, Get],
         m: Manifest[DataType] /*, log:distributed.logging.Logger = distributed.logging.NullLogger */ ): Get = {
     lock
@@ -373,7 +373,7 @@ abstract class Repository extends ReadableRepository {
   /**
    * In case the uuid source and the saved data coincide, a plain single-argument "put(data)" can be used instead.
    */
-  def put[DataType <: { def uuid: String }, Get <: GetKey[DataType]](data: DataType)(implicit section: Section[DataType, DataType, Get], m: Manifest[DataType]): Get = put[DataType, DataType, Get](data, data)
+  final def put[DataType <: { def uuid: String }, Get <: GetKey[DataType]](data: DataType)(implicit section: Section[DataType, DataType, Get], m: Manifest[DataType]): Get = put[DataType, DataType, Get](data, data)
 
   // the internal, low-level, non-type-safe equivalent to put()
   /**
@@ -399,6 +399,7 @@ abstract class Repository extends ReadableRepository {
    * primitive will typically only be called as part of a more complicated transaction,
    * in order to preserve the repository integrity.
    */
+  // TODO: do we need this? Or is it just unnecessary added complexity, at this time?
   protected def delete(selector: Selector): Unit
 }
 
