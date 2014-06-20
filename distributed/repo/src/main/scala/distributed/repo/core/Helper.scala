@@ -57,21 +57,23 @@ object LocalRepoHelper {
    * Publishes all files in the localRepo directory, according to the SHAs calculated
    * by the build system.
    */
-  protected def publishRawArtifacts(localRepo: File, subproj: String, files: Seq[ArtifactSha], remote: Repository, log: Logger) = {
+  protected def publishRawArtifacts(localRepo: File, subproj: String, files: Seq[ArtifactRelative], remote: Repository, log: Logger) = {
     if (subproj != "") log.debug("Checking files for subproject: " + subproj)
-    files foreach {
-      case artSha@ArtifactSha(sha, location) =>
+    files map {
+      case relative@ArtifactRelative(location) =>
         log.debug("Checking file: " + location)
         val artifactFile = localRepo / location
         // we need exactly an InputStream, rather than a FileInputStream, because of the implicit "key" parameter
         val stream:InputStream = new java.io.FileInputStream(artifactFile)
         val getKey = remote.put(stream, RawUUID(artifactFile))
+        ArtifactSha(getKey, relative)
     }
   }
 
-  protected def publishArtifactsMetadata(meta: ProjectArtifactInfo, remote: Repository, log: Logger): Unit = {
+  protected def publishArtifactsMetadata(meta: ProjectArtifactInfo, remote: Repository, log: Logger): GetArtifacts = {
     val getKey = remote.put(meta.versions, meta.project)
     log.debug("Published artifacts meta info for project " + meta.project.config.name + ", uuid" + getKey.uuid)
+    getKey
   }
 
   /**
@@ -92,18 +94,31 @@ object LocalRepoHelper {
    * @param extracted The extracted artifacts that this project generates.
    * @param remote  The repository to publish into.
    */
-  def publishArtifactsInfo(project: RepeatableProjectBuild, extracted: BuildArtifactsOut,
-    localRepo: File, remote: Repository, log: Logger): ProjectArtifactInfo = {
-    extracted.results foreach { case BuildSubArtifactsOut(subproj, _, shas, _) =>
-      publishRawArtifacts(localRepo, subproj, shas, remote, log) }
-    val info = ProjectArtifactInfo(project, extracted)
-    publishArtifactsMetadata(info, remote, log)
-    info
+      // Results is an ArtifactsOut.  publishArtifactsInfo() converts it into the final
+      // BuildArtifactsOut, which includes the GetKeys needed to retrieve the raw files,
+      // and saves the resulting ProjectArtifactInfo. We do not save the GetArtifact key,
+      // as we can retrieve the ProjectArtifactInfo using get() on RepeatableProjectBuild.
+      // However, we return the converted BuildArtifactOut, as we are going to return it
+      // inside the BuildSuccess (TODO: do we need it at all there??)
+  def publishArtifactsInfo(project: RepeatableProjectBuild, extracted: ArtifactsOut,
+    localRepo: File, remote: Repository, log: Logger): BuildArtifactsOut = {
+    val withKeys = BuildArtifactsOut(extracted.results map {
+      case SubArtifactsOut(subproj, arts, relatives, modInfos) =>
+        val artifactShas = publishRawArtifacts(localRepo, subproj, relatives, remote, log)
+        BuildSubArtifactsOut(subproj, arts, artifactShas, modInfos)
+      })
+    val info = ProjectArtifactInfo(project, withKeys)
+    val getArtifacts = publishArtifactsMetadata(info, remote, log)
+    withKeys
   }
 
-  def materializeProjectMetadata(gp: GetProject, ga: GetArtifacts, remote: ReadableRepository): ProjectArtifactInfo = {
+  /**
+   * We start with a key to a project, and from there we extract the project, and then the
+   * artifacts info, which allows us to extract the raw data from the repository.
+   */
+  def materializeProjectMetadata(gp: GetProject, remote: ReadableRepository): ProjectArtifactInfo = {
     val projectMeta = remote.get(gp) getOrElse sys.error("Unable to read the project info from repository")
-    val artifactsMeta = remote.get(ga) getOrElse sys.error("Unable to read the artifacts info: this project may not have completed compilation or testing.")
+    val artifactsMeta = remote.get[BuildArtifactsOut](projectMeta)  getOrElse sys.error("Unable to read the artifacts info: this project may not have completed compilation or testing.")
     ProjectArtifactInfo(projectMeta, artifactsMeta)
   }
 

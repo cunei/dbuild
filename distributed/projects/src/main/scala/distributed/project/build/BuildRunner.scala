@@ -20,7 +20,7 @@ trait BuildRunner {
    * @param log  The log to write to.
    */
   def runBuild(b: RepeatableProjectBuild, dir: java.io.File, input: BuildInput, localBuildRunner: LocalBuildRunner,
-      buildData:BuildData): BuildArtifactsOut
+      buildData:BuildData): ArtifactsOut
 }
 
 /** Aggregate builder. */
@@ -29,6 +29,6 @@ class AggregateBuildRunner(systems: Seq[BuildSystem[Extractor, LocalBuildRunner]
     BuildSystem.forName(proj.system, systems)
 
   def runBuild(b: RepeatableProjectBuild, dir: java.io.File, input: BuildInput, localBuildRunner: LocalBuildRunner,
-      buildData:BuildData): BuildArtifactsOut =
+      buildData:BuildData): ArtifactsOut =
     findBuildSystem(b.config).runBuild(b, dir, input, localBuildRunner, buildData)
 }
