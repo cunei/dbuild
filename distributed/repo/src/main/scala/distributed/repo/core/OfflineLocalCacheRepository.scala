@@ -3,36 +3,43 @@ package repo
 package core
 
 import java.io.File
+import collection.JavaConversions._
 import sbt.IO
 import java.io.InputStream
+import java.io.FileOutputStream
 import java.util.zip.GZIPInputStream
 import java.io.BufferedInputStream
 import java.io.FileInputStream
+import sbt.Path._
+import org.apache.commons.io.IOUtils
 
 /** A cached remote repository. */
-class OfflineLocalCacheRepository(cacheDir: File) extends ReadableRepository {
-  def get(key: String): InputStream  = {
-    val cacheFile = new File(cacheDir, key)
-    // TODO - Are we guaranteed uniqueness?  Should we embed knowledge of
-    // `raw` vs `meta` keys here?
-    // For now, let's assume immutable repos.
-    if(!cacheFile.exists)
-      throw new ResolveException(key, "Key ["+key+"] does not exist!")
-    val stream=new BufferedInputStream(new FileInputStream(cacheFile))
-    if (key.startsWith("meta/"))
-      new GZIPInputStream(stream)
-    else
-      stream
+class LocalRepository(cacheDir: File) extends Repository {
+  protected def file(sel:Selector) = cacheDir / sel.section / sel.index
+  def fetch(sel: Selector) = {
+    val cacheFile = file(sel)
+    Option(cacheFile.exists) map { _ =>
+       new BufferedInputStream(new FileInputStream(cacheFile))
+    }
   }
-}
+  def date(sel: Selector) = None // todo: when Storing, also write a timestamp
+  def size(sel: Selector) = file(sel).length
+  def hasData(sel: Selector) = file(sel).exists
+  def scan(section: String): Seq[Selector] = {
+    val dir = cacheDir / section
+    dir.listFiles().toSeq map { file =>
+      Selector(section,file.getName)
+    }
+  }
+  // TODO: implement a proper file-based locking
+  protected def lock: Unit = ()
+  protected def unlock: Unit = ()
 
-class LocalRepository(repo: File) 
-    extends OfflineLocalCacheRepository(repo)
-    with Repository {
-  
-  
-  def put(key: String, file: File): Unit = {
-    val cacheFile = new File(repo, key)
-    IO.copyFile(file, cacheFile, false)
+  def store(data: InputStream, sel: Selector) = {
+    val outputStream = new FileOutputStream(file(sel))
+    IOUtils.copy(data, outputStream)
+    outputStream.close()
+    data.close() // unnecessary, put() should do it for us
   }
+  def delete(sel: Selector) = file(sel).delete()
 }

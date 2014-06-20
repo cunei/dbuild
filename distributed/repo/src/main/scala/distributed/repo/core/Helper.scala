@@ -10,7 +10,10 @@ import distributed.project.model.Utils.{ writeValue, readValue }
 import distributed.project.model.{ ArtifactLocation, BuildArtifactsIn }
 import logging.Logger
 import java.io.InputStream
+import java.io.OutputStream
+import java.io.FileOutputStream
 import sections._
+import org.apache.commons.io.IOUtils
 
 object LocalRepoHelper {
 
@@ -133,7 +136,8 @@ object LocalRepoHelper {
    * Artifact that the project has in the repository.  It returns the project metadata and a sequence of
    * results of the operation run against each artifact in the repository.
    */
-  protected def resolveArtifacts[T](uuid: String,
+<<<<<<< HEAD
+  protected def resolveArtifacts[T](key: GetProject,
     remote: ReadableRepository): ((File, ArtifactSha) => T) => ResolutionResult[T] =
     resolvePartialArtifacts(uuid, Seq.empty, remote)
 
@@ -144,9 +148,9 @@ object LocalRepoHelper {
    * "subprojs" list of subprojects; however, "metadata" contain the *full* project description, which
    * includes the full list of modules, and the full list of ArtifactLocations.
    */
-  protected def resolvePartialArtifacts[T](gp: GetProject, ga: GetArtifacts, subprojs: Seq[String], remote: ReadableRepository)(f: (File, ArtifactSha) => T): ResolutionResult[T] = {
+  protected def resolvePartialArtifacts[T](gp: GetProject, subprojs: Seq[String], remote: ReadableRepository)(f: (File, ArtifactSha) => T): ResolutionResult[T] = {
     val metadata =
-      materializeProjectMetadata(gp, ga, remote)
+      materializeProjectMetadata(gp, remote)
     val fetch = if (subprojs.isEmpty) metadata.versions.results.map { _.subName } else {
       val unknown = subprojs.diff(metadata.versions.results.map { _.subName })
       if (unknown.nonEmpty) {
@@ -154,10 +158,10 @@ object LocalRepoHelper {
       }
       subprojs
     }
-    val artifactFiles = metadata.versions.results.filter { v => fetch.contains(v.subName) }.flatMap { _.shas }
+    val artifactFiles = (metadata.versions.results filter { v => fetch.contains(v.subName) }).flatMap { _.shas }
     val results = for {
       artifactFile <- artifactFiles
-      resolved = remote.get(artifactFile.sha)
+      resolved = remote.get(artifactFile.uuid) getOrElse sys.error("Artifact not found in the repository: "+artifactFile.location)
     } yield f(resolved, artifactFile)
 
     // TODO: artifacts should be associated with (be contained into) each ModuleInfo. Right now
@@ -179,16 +183,18 @@ object LocalRepoHelper {
    *   plus a log message as a sequence of strings.
    */
   def materializeProjectRepository(uuid: String, remote: ReadableRepository, localRepo: File, debug: Boolean): (Seq[ArtifactLocation], Seq[com.typesafe.reactiveplatform.manifest.ModuleInfo], Seq[String]) =
-    materializePartialProjectRepository(uuid, Seq.empty, remote, localRepo, debug)
+    materializePartialProjectRepository(key, Seq.empty, remote, localRepo, debug)
 
   /* Materialize only parts of a given projects, and specifically
    * those specified by the given subproject list. If the list is empty, grab everything.
    */
-  def materializePartialProjectRepository(uuid: String, subprojs: Seq[String], remote: ReadableRepository,
+  def materializePartialProjectRepository(key: GetProject, subprojs: Seq[String], remote: ReadableRepository,
     localRepo: File, debug: Boolean): (Seq[ArtifactLocation], Seq[com.typesafe.reactiveplatform.manifest.ModuleInfo], Seq[String]) = {
-    val ResolutionResult(meta, _, arts, modInfos) = resolvePartialArtifacts(uuid, subprojs, remote) { (resolved, artifact) =>
-      val file = new File(localRepo, artifact.location)
-      IO.copyFile(resolved, file, false)
+    val ResolutionResult(meta, _, arts, modInfos) = resolvePartialArtifacts(uuid, subprojs, remote) { (inputStream, artifact) =>
+      val file = new File(localRepo, artifact.location.location)
+      val outputStream = new FileOutputStream(file)
+      IOUtils.copy(inputStream, outputStream)
+      outputStream.close()
     }
     val space = meta.project.config.space getOrElse
       sys.error("Internal error: space is None in " + meta.project.config.name + " while rematerializing artifacts.")
@@ -211,7 +217,7 @@ object LocalRepoHelper {
   // needs to be rematerialized into a separate directory, each for a separate level of the build
   // Returns for each group the list of rematerialized artifacts
   def getArtifactsFromUUIDs(diagnostic: ( => String) => Unit, repo: Repository, localRepos: Seq /*Levels*/ [File],
-    uuidGroups: Seq /*Levels*/ [Seq[String]], fromSpaces: Seq /*Levels*/ [String], debug: Boolean): BuildArtifactsInMulti =
+    uuidGroups: Seq /*Levels*/ [Seq[GetProject]], fromSpaces: Seq /*Levels*/ [String], debug: Boolean): BuildArtifactsInMulti =
     BuildArtifactsInMulti(
       ((uuidGroups, fromSpaces, localRepos).zipped.toSeq.zipWithIndex) map {
         case ((uuids, fromSpace, localRepo), index) =>
@@ -225,13 +231,13 @@ object LocalRepoHelper {
           BuildArtifactsIn(artifacts, fromSpace, localRepo)
       })
 
-  def getProjectInfo(uuid: String, remote: ReadableRepository) =
-    resolveArtifacts(uuid, remote)((x, y) => x -> y)
+  def getProjectInfo(key: GetProject, remote: ReadableRepository) =
+    resolveArtifacts(key, remote)((x, y) => x -> y)
 
   /** Checks whether or not a given project (by UUID) is published. */
-  def getPublishedDeps(uuid: String, remote: ReadableRepository, log: Logger): BuildArtifactsOut = {
+  def getPublishedDeps(uuid: GetProject, remote: ReadableRepository, log: Logger): BuildArtifactsOut = {
     // We run this to ensure all artifacts are resolved correctly.
-    val ResolutionResult(meta, results, _, _) = resolveArtifacts(uuid, remote) { (file, artifact) => () }
+    val ResolutionResult(meta, results, _, _) = resolveArtifacts(uuid, remote) { (inputStream, artifact) => () }
     log.info("Found cached project build, uuid " + uuid)
     meta.versions
   }

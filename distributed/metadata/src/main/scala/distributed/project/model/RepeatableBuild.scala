@@ -3,6 +3,7 @@ package distributed.project.model
 import Utils.{ writeValue, canSeeSpace }
 import com.fasterxml.jackson.annotation.JsonProperty
 
+
 /**
  * Information on how to build a project.  Consists of both distributed build
  * configuration and extracted information.  Note: That the config in this case
@@ -58,7 +59,7 @@ case class RepeatableDepInfo(
   // The list of dependencies is transitive (within the boundaries
   // of the relevant spaces, see below)
   dependencyNames: Seq[String], // names corresponding to a RepeatableProjectBuild
-  dependencyUUIDs: Seq[String]  // uuids corresponding to a RepeatableProjectBuild
+  dependencyUUIDs: Seq[GetProject] // uuids corresponding to a RepeatableProjectBuild
   // dependencyUUIDs and dependencyNames refer to the same elements. They are
   // in two separate sequences for convenience, as in the code there is no
   // assumption anywhere that they should be kept in sync. If that need should arise,
@@ -112,7 +113,10 @@ case class RepeatableDistributedBuild(builds: Seq[ProjectConfigAndExtracted]) {
               dep <- (subgraph - head) if canSeeSpace(fromSpace, dep.getSpace.to)
             } yield current get dep.config.name getOrElse sys.error("Internal error: unexpected circular dependency. Please report.")
             val sortedDeps = dependencies.toSeq.sortBy(_.configAndExtracted.config.name)
-            RepeatableDepInfo(info.version, sortedDeps.map(_.configAndExtracted.config.name), sortedDeps.map(_.uuid))
+
+            // FIXME // FIXME // FIXME GetProject(p.uuid) should not be called in the line below: keep instead a map to keys once projects have been written.
+
+            RepeatableDepInfo(info.version, sortedDeps.map(_.configAndExtracted.config.name), sortedDeps.map(p=>GetProject(p.uuid)))
         }
         val headMeta = RepeatableProjectBuild(head,
           allDependencies) // pick defaults if no BuildOptions specified

@@ -190,6 +190,8 @@ abstract class ReadableRepository {
    * If you do not have a GetKey, but you have an instance of a KeySource, you can use that to retrieve your
    * data as well. In that case, you may have to supply the DataType type parameter explicitly if the
    * KeySource type you are using is used to access different DataTypes.
+   *
+   * If DataType you received is an InputStream, you should close it once you are done with it.
    */
   /*
    * Implementation trick: getKey presents itself as a one-argument function that is parametric on a single
@@ -200,34 +202,25 @@ abstract class ReadableRepository {
    */
   final def get[DataType] = new {
     def apply[KeySource <: { def uuid: String }, Get <: GetKey[DataType]](source: KeySource)(implicit section: Section[DataType, KeySource, Get], ms: Manifest[KeySource], m: Manifest[DataType]): Option[DataType] =
-      apply(getKey(source)(section, ms))(section, m)
+      apply(Repository.getKey(source)(section, ms))(section, m)
     def apply[KeySource <: { def uuid: String }, Get <: GetKey[DataType]](g: GetKey[DataType])(implicit section: Section[DataType, _, _], m: Manifest[DataType]): Option[DataType] = {
       lock
-      val data = fetch(section.selector(g)) map { section.streamToData(_)(m) }
-      unlock
-      data
+      try {
+        fetch(section.selector(g)) map { section.streamToData(_)(m) }
+      } finally { unlock }
     }
   }
-  /**
-   * If needed, you can speculatively obtain a GetKey directly from a given KeySource, without storing any
-   * data. That is not recommended, as storing somewhere a GetKey that has no associated data in the
-   * repository is the equivalent of creating a dangling reference. Use the GetKeys returned by a put(), instead.
-   * If the same KeySource type is used for multiple DataTypes, you may have to supply the DataType type parameter explicitly.
-   * Note: this will be a private def, unless it turns out that such a call is really needed in user code.
-   */
-  final private[core] def getKey[DataType] = new {
-    def apply[KeySource <: { def uuid: String }, Get <: GetKey[DataType]](source: KeySource)(implicit section: Section[DataType, KeySource, Get], m: Manifest[KeySource]): Get =
-      section.newGet(source.uuid)
-  }
+  /** see getKey in the companion object. */
+  final /*private[core]*/ def getKey[DataType] = Repository.getKey[DataType]
   /**
    * Retrieves the space concretely taken in the repository to store
    * the data indexed by this key. Returns zero if key not present.
    */
-  final def getSize[DataType](g: GetKey[DataType])(implicit section: Section[DataType, _, _], m: Manifest[DataType]): Int = {
+  final def getSize[DataType](g: GetKey[DataType])(implicit section: Section[DataType, _, _], m: Manifest[DataType]): Long = {
     lock
-    val len = size(section.selector(g))
-    unlock
-    len
+    try {
+      size(section.selector(g))
+    } finally { unlock }
   }
   /**
    * Get the list of keys for items of this DataType currently in the repo. You will need to provide
@@ -238,9 +231,9 @@ abstract class ReadableRepository {
   final def enumerate[DataType] = new {
     def apply[KeySource <: { def uuid: String }, Get <: GetKey[DataType]]()(implicit section: Section[DataType, KeySource, Get]): Seq[Get] = {
       lock
-      val seq = scan(section.name) map section.getFromSelector
-      unlock
-      seq
+      try {
+        scan(section.name) map section.getFromSelector
+      } finally { unlock }
     }
   }
 
@@ -259,6 +252,8 @@ abstract class ReadableRepository {
    * If no data is present, return None.
    * Note that there is no corresponding high-level call: date() and delete() will only be
    * used inside a lock/unlock section from a GC operation (whose details we will elaborate later).
+   *
+   * Currently unused.
    */
   // Note: should we split atime and ctime? For a proxy, atime might be useful.
   protected def date(selector: Selector): Option[Date]
@@ -266,7 +261,7 @@ abstract class ReadableRepository {
    * Return, if known, the actual space occupied in the Repository by the data stored
    * under Selector. If no data, return zero.
    */
-  protected def size(selector: Selector): Int
+  protected def size(selector: Selector): Long
   /**
    * Read from the repository the data stored at Selector. If no data is present, return None.
    */
@@ -281,10 +276,21 @@ abstract class ReadableRepository {
    * lock and unlock are used to protect against concurrent accesses to the repository,
    * and must protect the repository content even if multiple independent processes
    * are trying to access this repository at the same time.
+   *
+   * An attempt to lock an already locked repository should result in a (possibly indefinitely
+   * long) wait for the repo to be unlocked. Optionally, the lock can fail after a repository-
+   * defined timeout, throwing a RepoLockException. If you opt to do that, select a rather long
+   * timeout (for instance, thirty minutes).
+   * An attempt to unlock an unlocked repository should result in a RepoLockException exception.
+   *
+   * The lock must /NOT/ be reentrant: an attempt to double-lock by the same thread must result
+   * in a RepoLockException.
    */
   protected def lock: Unit
   protected def unlock: Unit
 }
+class RepoLockException(msg: String) extends Exception(msg)
+
 /**
  * Abstract class for a readable/writeable repository of data, indexed by GetKeys.
  * The high-level, type-safe interface (get/put) is also safe to use from
@@ -308,21 +314,23 @@ abstract class Repository extends ReadableRepository {
    */
   final def put[DataType, KeySource <: { def uuid: String }, Get <: GetKey[DataType]](data: DataType,
     keySource: KeySource, overwrite: Boolean = false)(implicit section: Section[DataType, KeySource, Get],
-        m: Manifest[DataType] /*, log:distributed.logging.Logger = distributed.logging.NullLogger */ ): Get = {
+      m: Manifest[DataType] /*, log:distributed.logging.Logger = distributed.logging.NullLogger */ ): Get = {
     lock
-    val uuid = keySource.uuid
-    val get = section.newGet(uuid)
-    // short circuit evaluation, hence hasData is called only if not overwrite
-    if (!overwrite && hasData(section.selector(get))) {
-      val previous = fetch(section.selector(get)).get
-      // compare the two InputStreams
-      val same = IOUtils.contentEquals(section.dataToStream(data), previous)
-      if (!same) sys.error("Internal Repository Error: data already in the repository does not match. Please report")
-    }
-    val out = section.dataToStream(data)
-    store(out, section.selector(get))
-    unlock
-    get
+    try {
+      val uuid = keySource.uuid
+      val get = section.newGet(uuid)
+      // short circuit evaluation, hence hasData is called only if not overwrite
+      if (!overwrite && hasData(section.selector(get))) {
+        val previous = fetch(section.selector(get)).get
+        // compare the two InputStreams
+        val same = IOUtils.contentEquals(section.dataToStream(data), previous)
+        if (!same) sys.error("Internal Repository Error: data already in the repository does not match. Please report")
+      }
+      val out = section.dataToStream(data)
+      store(out, section.selector(get))
+      out.close() // if store has already closed, this does nothing.
+      get
+    } finally { unlock }
   }
 
   // TODO: Add logging, following this scheme (more or less):
@@ -373,7 +381,8 @@ abstract class Repository extends ReadableRepository {
   /**
    * In case the uuid source and the saved data coincide, a plain single-argument "put(data)" can be used instead.
    */
-  final def put[DataType <: { def uuid: String }, Get <: GetKey[DataType]](data: DataType)(implicit section: Section[DataType, DataType, Get], m: Manifest[DataType]): Get = put[DataType, DataType, Get](data, data)
+  final def put[DataType <: { def uuid: String }, Get <: GetKey[DataType]](data: DataType)(implicit section: Section[DataType, DataType, Get], m: Manifest[DataType]): Get =
+    put[DataType, DataType, Get](data, data)
 
   // the internal, low-level, non-type-safe equivalent to put()
   /**
@@ -398,9 +407,11 @@ abstract class Repository extends ReadableRepository {
    * race conditions, there is no corresponding high-level "delete()": this
    * primitive will typically only be called as part of a more complicated transaction,
    * in order to preserve the repository integrity.
+   *
+   * Returns true if the file was deleted, false otherwise.
    */
   // TODO: do we need this? Or is it just unnecessary added complexity, at this time?
-  protected def delete(selector: Selector): Unit
+  protected def delete(selector: Selector): Boolean
 }
 
 // in client code use:
@@ -460,6 +471,18 @@ private object RepositoryCompilationTest {
 }
 
 object Repository {
+
+  /**
+   * If needed, you can speculatively obtain a GetKey directly from a given KeySource, without storing any
+   * data. That is not recommended, as storing somewhere a GetKey that has no associated data in the
+   * repository is the equivalent of creating a dangling reference. Use the GetKeys returned by a put(), instead.
+   * If the same KeySource type is used for multiple DataTypes, you may have to supply the DataType type parameter explicitly.
+   * Note: this should ideally be a private[core] def, once all the code that uses it has been properly refactored.
+   */
+  final /*private[core]*/ def getKey[DataType] = new {
+    def apply[KeySource <: { def uuid: String }, Get <: GetKey[DataType]](source: KeySource)(implicit section: Section[DataType, KeySource, Get], m: Manifest[KeySource]): Get =
+      section.newGet(source.uuid)
+  }
 
   def default: Repository = {
     // Look for repository/credentials file
