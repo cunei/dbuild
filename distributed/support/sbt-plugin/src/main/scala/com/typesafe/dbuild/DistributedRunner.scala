@@ -14,7 +14,8 @@ import java.io.File
 import distributed.repo.core.LocalArtifactMissingException
 import org.apache.ivy.core.module.id.ModuleRevisionId
 import distributed.repo.core.LocalRepoHelper
-import distributed.project.model.BuildSubArtifactsOut
+import distributed.project.model.ArtifactsOut
+import distributed.project.model.SubArtifactsOut
 import distributed.project.model.SavedConfiguration
 import distributed.project.model.BuildArtifactsInMulti
 import distributed.project.build.BuildDirs._
@@ -93,11 +94,8 @@ object DistributedRunner {
     projects map { p => refs.find(ref => (p == normalizedProjectName(ref, baseDirectory))).get }
   }
 
-  def makeBuildResults(artifacts: Seq[BuildSubArtifactsOut], localRepo: File): model.BuildArtifactsOut =
-    model.BuildArtifactsOut(artifacts)
-
-  def printResults(outFile: File, artifacts: Seq[BuildSubArtifactsOut], localRepo: File): Unit =
-    IO.write(outFile, writeValue(makeBuildResults(artifacts, localRepo)))
+  def printResults(outFile: File, artifacts: Seq[SubArtifactsOut]): Unit =
+    IO.write(outFile, writeValue(ArtifactsOut(artifacts)))
 
   // TODO - Here we rely on a sequence of artifact locations, and we try to do
   // the matching manually. Ideally, we should take our ModuleID, point Ivy to
@@ -571,14 +569,14 @@ object DistributedRunner {
     }
 
     println(config.info.subproj.head.mkString("These subprojects will be built: ", ", ", ""))
-    val buildAggregate = runAggregate[(Seq[File], Seq[BuildSubArtifactsOut]), (Seq[File], BuildSubArtifactsOut)](state2, config.info.subproj.head, (Seq.empty, Seq.empty)) {
+    val buildAggregate = runAggregate[(Seq[File], Seq[SubArtifactsOut]), (Seq[File], SubArtifactsOut)](state2, config.info.subproj.head, (Seq.empty, Seq.empty)) {
       case ((oldFiles, oldArts), (newFiles, arts)) => (newFiles, oldArts :+ arts)
     } _
 
     // If we're measuring, run the build several times.
     val buildTask = if (config.measurePerformance) timedBuildProject _ else untimedBuildProject _
 
-    def buildTestPublish(ref: ProjectRef, state6: State, previous: (Seq[File], Seq[BuildSubArtifactsOut])): (State, (Seq[File], BuildSubArtifactsOut)) = {
+    def buildTestPublish(ref: ProjectRef, state6: State, previous: (Seq[File], Seq[SubArtifactsOut])): (State, (Seq[File], SubArtifactsOut)) = {
       println("----------------------")
       println("Processing subproject: " + normalizedProjectName(ref, baseDirectory))
       val (_, libDeps) = Project.extract(state6).runTask(Keys.allDependencies in ref, state6)
@@ -608,19 +606,19 @@ object DistributedRunner {
       val localRepo = config.info.outRepo.getAbsoluteFile
       val currentFiles = (localRepo.***).get.
         filterNot(file => file.isDirectory || file.getName == "maven-metadata-local.xml")
-      val newFilesShas = currentFiles.diff(previousFiles).map { LocalRepoHelper.makeArtifactSha(_, localRepo) }
+      val newFilesRelative = currentFiles.diff(previousFiles).map { LocalRepoHelper.makeArtifactRelative(_, localRepo) }
 
       // extraction of moduleInfo
       val (state10, mi) = Project.extract(state9).runTask(moduleInfo in ref, state9)
 
       (state10, (currentFiles,
-        BuildSubArtifactsOut(normalizedProjectName(ref, baseDirectory), artifacts, newFilesShas, mi)
+        SubArtifactsOut(normalizedProjectName(ref, baseDirectory), artifacts, newFilesShas, mi)
       ))
     }
 
     val (state3, (files, artifactsAndFiles)) = buildAggregate(buildTestPublish)
 
-    printResults(resultFile, artifactsAndFiles, config.info.outRepo)
+    printResults(resultFile, artifactsAndFiles)
     state3
   }
 

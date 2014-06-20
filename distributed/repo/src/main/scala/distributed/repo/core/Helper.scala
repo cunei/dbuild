@@ -34,10 +34,9 @@ object LocalRepoHelper {
 
   def readBuildMeta(g: GetBuild, remote: ReadableRepository): Option[SavedConfiguration] = remote.get(g)
 
-  def makeArtifactSha(file: File, localRepo: File) = {
-    val sha = hashing.files sha1 file
+  def makeArtifactRelative(file: File, localRepo: File) = {
     val name = IO.relativize(localRepo, file) getOrElse sys.error("Internal error while relativizing")
-    ArtifactSha(sha, name)
+    ArtifactRelative(name)
   }
 
   // In case we already have an existing build in the cache, we might be interested in getting diagnostic

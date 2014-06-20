@@ -353,6 +353,6 @@ object SbtRunner {
     placeOneFile(getArtsInputFileName, projectDir / dbuildSbtDirName, writeValue(content))
   /** The file where placeGenArtsInputFile() (which which must be consistent) placed its data. */
   def genArtsInputFile(projectDir: File) = projectDir / dbuildSbtDirName / getArtsInputFileName
-  /** The file where the resulting BuildArtifactsOut will be stored, at the end of building */
+  /** The file where the resulting ArtifactsOut will be stored, at the end of building */
   def buildArtsFile(projectDir: File) = projectDir / dbuildSbtDirName / outBuildArtsName
 }

@@ -59,14 +59,14 @@ class SbtBuildSystem(repos: List[xsbti.Repository], workingDir: File, debug: Boo
   }
 
   def runBuild(project: RepeatableProjectBuild, dir: File, info: BuildInput, localBuildRunner: LocalBuildRunner,
-    buildData: BuildData): BuildArtifactsOut = {
+    buildData: BuildData): ArtifactsOut = {
     val ec = project.extra[ExtraType]
     val name = project.config.name
     val projDir = SbtBuildSystem.projectDir(dir, ec)
     val config = SbtBuildConfig(ec, project.config.crossVersion getOrElse sys.error("Internal error: crossVersion not expanded in runBuild."),
       project.config.checkMissing getOrElse sys.error("Internal error: checkMissing not expanded in runBuild."), info)
     SbtBuilder.buildSbtProject(repos, runner)(projDir, config, buildData.log, buildData.debug)
-    readValue[BuildArtifactsOut](buildArtsFile(projDir))
+    readValue[ArtifactsOut](buildArtsFile(projDir))
   }
 }
 
