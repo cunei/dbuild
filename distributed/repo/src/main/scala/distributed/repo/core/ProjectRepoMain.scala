@@ -5,7 +5,7 @@ package core
 import project.model._
 import LocalRepoHelper.ResolutionResult
 import java.io.File
-import sbt.{RichFile, IO, Path}
+import sbt.{ RichFile, IO, Path }
 import Path._
 import distributed.project.model.Utils.writeValue
 
@@ -24,28 +24,29 @@ class SbtRepoMain extends xsbti.AppMain {
   case class Exit(val code: Int) extends xsbti.Exit
 }
 
-
 /** Direct main for use in SBT. */
 object ProjectRepoMain {
-  // TODO - this file-specific knowledge is evil
-  val cacheDir = Repository.defaultCacheDir
+  import sections._
+  // Removed the evil file-specific knowledge, which
+  // will also allow to use this code to inspect remote repositories
   val cache = Repository.default
-  private def getProjectInfo(uuid:String) = LocalRepoHelper.getProjectInfo(uuid, cache)
 
+  // TODO: integrate drepo as a subcommand "dbuild repo" in the main command line;
+  // add an option to select which should be the cache to inspect;
+  // optionally, add a repo subsubcommand to upload a build from one cache to another
   def main(args: Array[String]): Unit = {
     args.toSeq match {
-      case Seq("project", uuid) => printProjectInfo(uuid)
+      case Seq("project", uuid) =>
+        printProjectInfo(uuid)
       case Seq("project-files", uuid) =>
-        printProjectHeader(uuid)
-        printProjectFiles(uuid)
+        printProjectInfo(uuid, printFiles = true, printArts = false)
       case Seq("project-artifacts", uuid) =>
-        printProjectHeader(uuid)
-        printProjectArtifacts(uuid)
+        printProjectInfo(uuid, printFiles = false, printArts = true)
       case Seq("build", uuid) => printBuildInfo(uuid)
       case Seq("build-projects", uuid) => printAllProjectInfo(uuid)
       case Seq("list-builds") => printAvailableBuilds()
       case Seq("list-projects") => printAvailableProjects()
-      case _ =>  
+      case _ =>
         println("""|Usage: <repo-reader> <cmd>
                    |  where cmd in:
                    |  -  project <uuid>
@@ -59,71 +60,84 @@ object ProjectRepoMain {
                    |  -  build-projects <uuid>
                    |      prints the information about projects within a build.
                    |  -  list-projects
-                   |      lists all projects available in *current cache only*.
+                   |      lists all projects available in the selected cache.
                    |  -  list-builds
-                   |      lists all builds available in *current cache only*.
+                   |      lists all builds available in the selected cache.
                    |""".stripMargin)
     }
   }
-  
+
   def printAvailableBuilds(): Unit = {
-    // TODO - This is pretty evil here...
     println("--- Available Builds")
-    for(file <- IO.listFiles(new java.io.File(cacheDir, "meta/build"))) {
-      val uuid = file.getName
-      val date = new java.util.Date(file.lastModified())
-      println("  * " + uuid + " @ " + date)
-      val projects = for {
-          SavedConfiguration(expandedDBuildConfig, build) <- LocalRepoHelper.readBuildMeta(uuid, cache).toSeq
-          project <- build.repeatableBuilds
-      } yield (project.configAndExtracted.config.name, project.uuid)
-      val names = padStrings(projects map (_._1))
-      val uuids = projects map (_._2)
-      for((name, id) <- names zip uuids) {
-        println("      + " + name + " " + id)
-      }
+    val keys = cache.enumerate[SavedConfiguration]()
+    keys foreach {
+      case key @ GetBuild(uuid) =>
+        val size = cache.getSize(key)
+        val date = "" // TODO: cache.date() is not reliable, as it changes across cache copies. We must add the timestamp to SavedConfiguration 
+        cache.get(key) match {
+          case None => println("  * " + uuid + " <deleted>")
+          case Some(saved) =>
+            println("  * " + uuid + " @ " + date)
+            val SavedConfiguration(expandedDBuildConfig, build) = saved
+            val projects = build.repeatableBuilds map { project => (project.configAndExtracted.config.name, project.uuid) }
+            val names = padStrings(projects map (_._1))
+            val uuids = projects map (_._2)
+            for ((name, id) <- names zip uuids) {
+              println("      + " + name + " " + id)
+            }
+        }
     }
   }
-  
+
   def printAvailableProjects(): Unit = {
-    // TODO - this is pretty evil here...
     println("--- Available Projects")
-    val uuids = IO.listFiles(new java.io.File(cacheDir, "meta/project")) map (_.getName)
-    printProjects(uuids)
-  }
-  
-  private def printProjects(uuids: Seq[String]): Unit = {
-    val meta = uuids map { uuid =>
-      val ResolutionResult(info, _, _, _) = getProjectInfo(uuid)
-      info
-    }
-    val names = padStrings(meta map (_.project.config.name))
-    val uris  = meta map (_.project.config.uri)
-    for(((uuid, name), uri)  <- uuids zip names zip uris) {
-      println("  * " + uuid + " " + name + " @ " + uri)
+    val keys = cache.enumerate[RepeatableProjectBuild]()
+    val projectsWithMeta = (keys zip (keys map { cache.get(_) })).
+      // we might get None, if projects are being deleted
+      filterNot(_._2.nonEmpty)
+    val names = padStrings(projectsWithMeta map (_._2.get.config.name))
+    (names zip projectsWithMeta) foreach {
+      case (paddedName, (GetProject(uuid), Some(p))) =>
+        println("  * " + uuid + " " + paddedName + " @ " + p.config.uri)
     }
   }
-  
+
   private def printProjectHeader(uuid: String): Unit =
     println("--- Project Build: " + uuid)
-    
-  def printProjectInfo(uuid: String): Unit = {
-        printProjectHeader(uuid)
-        printProjectDependencies(uuid)
-        printProjectArtifacts(uuid)
-        printProjectFiles(uuid)
+
+  def getProject(uuid: String): Option[RepeatableProjectBuild] = {
+    printProjectHeader(uuid)
+    val key = GetProject(uuid)
+    cache.get(key)
   }
-  
-  def printProjectDependencies(uuid:String): Unit = {
-    val ResolutionResult(meta, _, _, _) = getProjectInfo(uuid)
+  def printProjectInfo(uuid: String, printArts: Boolean = true, printFiles: Boolean = true, name: Option[String] = None): Unit = {
+    val project = getProject(uuid)
+    project match {
+      case None => name match {
+        case None => println("<project not available>")
+        case Some(s) => "     " + s + " is not built."
+      }
+      case Some(p) =>
+        printProjectDependencies(p)
+        val buildArtifactsOut = cache.get[BuildArtifactsOut](p)
+        buildArtifactsOut match {
+          case None => println("<no artifacts published>")
+          case Some(bao) =>
+            printProjectArtifacts(bao)
+            printProjectFiles(bao)
+        }
+    }
+  }
+
+  def printProjectDependencies(p: RepeatableProjectBuild): Unit = {
     println(" -- Dependencies --")
-    for(uuid <- meta.project.depInfo flatMap (_.dependencyUUIDs))
+    for (GetProject(uuid) <- (p.depInfo flatMap (_.dependencyUUIDs)).distinct)
       println("    * " + uuid)
   }
 
   // TODO: now that module information is available, we might print artifacts grouped by modules
-  def printProjectArtifacts(uuid:String): Unit = {
-    val ResolutionResult(meta, _, arts, _) = getProjectInfo(uuid)
+  def printProjectArtifacts(bao: BuildArtifactsOut): Unit = {
+    val arts = bao.results flatMap { _.artifacts }
     println(" -- Artifacts -- ")
     val groups = padStrings(arts map (_.info.organization))
     val names = padStrings(arts map (_.info.name))
@@ -134,7 +148,7 @@ object ProjectRepoMain {
       ((((group, name), classifier), extension), version) <- groups zip names zip classifiers zip extensions zip versions
     } println("  - " + group + " : " + name + " : " + classifier + " : " + extension + " : " + version)
   }
-  
+
   def padStrings(strings: Seq[String]): Seq[String] = {
     val max = ((strings map (_.length)) :+ 0).max
     val pad = Seq.fill(max)(' ') mkString ""
@@ -143,41 +157,38 @@ object ProjectRepoMain {
       myPad = pad take (max - string.length)
     } yield myPad + string
   }
-  
-  def printProjectFiles(uuid: String): Unit = {
-    val ResolutionResult(_, artFiles, arts, _) = getProjectInfo(uuid)
+
+  def printProjectFiles(bao: BuildArtifactsOut): Unit = {
     println(" -- Files -- ")
-    
-    val groups = artFiles groupBy { x => x._2.location.take(x._2.location.lastIndexOf('/')) }
+    val artShas = bao.results flatMap { _.shas }
+    val groups = artShas groupBy { x => x.location.location.take(x.location.location.lastIndexOf('/')) }
     for ((dir, arts) <- groups.toSeq.sortBy(_._1)) {
       println("  " + dir)
       printArtifactSeq(arts, true, "    ")
     }
   }
-  
-  def printArtifactSeq(arts: Seq[(File, ArtifactSha)], shrinkLocation: Boolean = false, pad: String = ""): Unit = {
-    val sizes = padStrings(arts map (_._1.length) map prettyFileLength)
-    val shas = arts map (_._2.sha)
-    val locations = {
-      val tmp = arts map (_._2.location)
-      if(shrinkLocation) tmp map (x => x.drop(x.lastIndexOf('/')+1))
-      else tmp
-    }
-    for(((size, sha), location) <- sizes zip shas zip locations) {
-      println(pad + sha + "  " + size + "  " + location)
+
+  def printArtifactSeq(arts: Seq[ArtifactSha], shrinkLocation: Boolean = false, pad: String = ""): Unit = {
+    arts foreach {
+      case ArtifactSha(rawKey @ GetRaw(sha), ArtifactRelative(location)) =>
+        val loc = if (shrinkLocation) location.drop(location.lastIndexOf('/') + 1)
+        else location
+        val size = cache.getSize(rawKey) getOrElse "<size unknown>"
+        println(pad + sha + "  " + size + "  " + loc)
     }
   }
-  
+
   def prettyFileLength(length: Long) = length match {
-    case x if x > (1024 * 1024 * 1023) => "%3.1fG" format (x.toDouble / (1024.0*1024*1024))
-    case x if x > (1024 * 1024) => "%3.1fM" format (x.toDouble / (1024.0*1024))
+    case x if x > (1024 * 1024 * 1023) => "%3.1fG" format (x.toDouble / (1024.0 * 1024 * 1024))
+    case x if x > (1024 * 1024) => "%3.1fM" format (x.toDouble / (1024.0 * 1024))
     case x if x > 1024 => "%3.1fk" format (x.toDouble / 1024.0)
     case x => "%4d" format (x)
   }
 
   def printBuildInfo(uuid: String): Unit = {
     println("--- Repeatable Build: " + uuid)
-    LocalRepoHelper.readBuildMeta(uuid, cache) match {
+    val key = GetBuild(uuid)
+    cache.get(key) match {
       case Some(SavedConfiguration(expandedDBuildConfig, build)) =>
         println(" = Projects = ")
         build.repeatableBuilds foreach { project =>
@@ -185,18 +196,24 @@ object ProjectRepoMain {
         }
         println(" = Repeatable dbuild configuration =")
         println(writeValue(expandedDBuildConfig))
-      case _ => println("This build UUID was not found in the cache.")
+      case None => println("This build UUID was not found in the cache.")
     }
   }
-  
-  
+
   def printAllProjectInfo(buildUUID: String): Unit = {
     println("--- Repeatable Build: " + buildUUID)
-    for {
-      SavedConfiguration(expandedDBuildConfig, build) <- LocalRepoHelper.readBuildMeta(buildUUID, cache)
-      project <- build.repeatableBuilds
-    } try printProjectInfo(project.uuid)
-      catch { case _ => println("     " + project.config.name + " is not built.")}
+    val savedOpt = cache.get(GetBuild(buildUUID))
+    savedOpt match {
+      case None => println("<build not found>")
+      case Some(SavedConfiguration(expandedDBuildConfig, build)) =>
+        build.repeatableBuilds foreach { p =>
+          // drepo bypasses the standard keys interface, but that is necessary as
+          // it deals directly with uuids. No other part of the code should
+          // access uuids inside keys directly
+          val key = Repository.getKey[RepeatableProjectBuild](p)
+          printProjectInfo(key.uuid, name = Some(p.config.name))
+        }
+    }
   }
 }
 

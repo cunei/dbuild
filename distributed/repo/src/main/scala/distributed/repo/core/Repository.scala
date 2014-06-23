@@ -131,20 +131,14 @@ package object sections {
     def dataToStream(d: DataType)(implicit m: Manifest[DataType]): InputStream = {
       val asString = writeValue(d)
       val asBytes = asString.getBytes()
-      val pipeOut = new java.io.PipedOutputStream()
-      val zip = new GZIPOutputStream(pipeOut)
-      zip.write(asBytes)
-      zip.close()
-      new java.io.PipedInputStream(pipeOut)
-      /*
-      // Alternative, without pipes but using a further byte array.
-      // Might be faster, since most metadata chunks are small.
+      // As an alternative, one could conceivably use Piped streams, but
+      // they are rather quirky and best avoided. All our artifacts should easily
+      // fit in array buffers anyway.
       val bos = new java.io.ByteArrayOutputStream()
       val zip = new GZIPOutputStream(bos)
       zip.write(asBytes)
       zip.close()
       new java.io.ByteArrayInputStream(bos.toByteArray())
-*/
     }
   }
   implicit object ProjectSection extends MetaSection[RepeatableProjectBuild, RepeatableProjectBuild, GetProject] {
@@ -204,23 +198,21 @@ abstract class ReadableRepository {
     def apply[KeySource <: { def uuid: String }, Get <: GetKey[DataType]](source: KeySource)(implicit section: Section[DataType, KeySource, Get], ms: Manifest[KeySource], m: Manifest[DataType]): Option[DataType] =
       apply(Repository.getKey(source)(section, ms))(section, m)
     def apply[KeySource <: { def uuid: String }, Get <: GetKey[DataType]](g: GetKey[DataType])(implicit section: Section[DataType, _, _], m: Manifest[DataType]): Option[DataType] = {
-      lock
-      try {
+      safe {
         fetch(section.selector(g)) map { section.streamToData(_)(m) }
-      } finally { unlock }
+      }
     }
   }
   /** see getKey in the companion object. */
   final /*private[core]*/ def getKey[DataType] = Repository.getKey[DataType]
   /**
    * Retrieves the space concretely taken in the repository to store
-   * the data indexed by this key. Returns zero if key not present.
+   * the data indexed by this key. Returns None if key not present.
    */
-  final def getSize[DataType](g: GetKey[DataType])(implicit section: Section[DataType, _, _], m: Manifest[DataType]): Long = {
-    lock
-    try {
+  final def getSize[DataType](g: GetKey[DataType])(implicit section: Section[DataType, _, _], m: Manifest[DataType]): Option[Long] = {
+    safe {
       size(section.selector(g))
-    } finally { unlock }
+    }
   }
   /**
    * Get the list of keys for items of this DataType currently in the repo. You will need to provide
@@ -230,11 +222,20 @@ abstract class ReadableRepository {
    */
   final def enumerate[DataType] = new {
     def apply[KeySource <: { def uuid: String }, Get <: GetKey[DataType]]()(implicit section: Section[DataType, KeySource, Get]): Seq[Get] = {
-      lock
-      try {
+      safe {
         scan(section.name) map section.getFromSelector
-      } finally { unlock }
+      }
     }
+  }
+  /**
+   * As a convenience method, you can use safe {...} to run code that should be synchronized during
+   * access to the repository.
+   */
+  def safe[A,B](f: => B): B = {
+    lock
+    try {
+      f
+    } finally { unlock }
   }
 
   /*
@@ -246,50 +247,63 @@ abstract class ReadableRepository {
   /**
    * Read from the repository the data stored at Selector. If no data is present, return None.
    */
-  protected def fetch(selector: Selector): Option[InputStream]
-  /**
-   * Read from the repository the timestamp when the data stored at Selector was last written.
-   * If no data is present, return None.
-   * Note that there is no corresponding high-level call: date() and delete() will only be
-   * used inside a lock/unlock section from a GC operation (whose details we will elaborate later).
-   *
-   * Currently unused.
-   */
-  // Note: should we split atime and ctime? For a proxy, atime might be useful.
-  protected def date(selector: Selector): Option[Date]
-  /**
-   * Return, if known, the actual space occupied in the Repository by the data stored
-   * under Selector. If no data, return zero.
-   */
-  protected def size(selector: Selector): Long
+  protected[core] def fetch(selector: Selector): Option[InputStream]
   /**
    * Read from the repository the data stored at Selector. If no data is present, return None.
+   * Avoid to use this call if you know that you will need the data soon: just use fetch()
+   * and test for None.
    */
-  protected def hasData(selector: Selector): Boolean
+  protected[core] def hasData(selector: Selector): Boolean
   /**
    * scan() checks the given Section, and returns all of its Selectors
    * for which data exist in the repository. If none exist, returns
    * an empty Seq.
    */
-  protected def scan(section: String): Seq[Selector]
+  protected[core] def scan(section: String): Seq[Selector]
   /**
    * lock and unlock are used to protect against concurrent accesses to the repository,
    * and must protect the repository content even if multiple independent processes
    * are trying to access this repository at the same time.
    *
    * An attempt to lock an already locked repository should result in a (possibly indefinitely
-   * long) wait for the repo to be unlocked. Optionally, the lock can fail after a repository-
-   * defined timeout, throwing a RepoLockException. If you opt to do that, select a rather long
-   * timeout (for instance, thirty minutes).
-   * An attempt to unlock an unlocked repository should result in a RepoLockException exception.
+   * long) wait for the repo to be unlocked. Optionally, the locking can fail after a repository-
+   * defined timeout, throwing an exception. If you opt to do that, please select a rather
+   * long timeout (for instance, thirty minutes).
+   * An attempt to unlock an unlocked repository should ideally result in an exception.
    *
-   * The lock must /NOT/ be reentrant: an attempt to double-lock by the same thread must result
-   * in a RepoLockException.
+   * The lock must /NOT/ allow the same thread to lock twice: there is no reason it should try
+   * to, and it may be a sign that something is seriously wrong. An attempt to double-lock by
+   * the same thread should result in an exception, or at least in an evident deadlock that we
+   * can debugged.
+   * 
+   * Something equivalent to a semaphore with a count of 1 is probably the appropriate semantics.
    */
-  protected def lock: Unit
-  protected def unlock: Unit
+  protected[core] def lock: Unit
+  /**
+   * @see lock
+   */
+  protected[core] def unlock: Unit
+  /**
+   * Read from the repository the timestamp when the data stored at Selector was last written.
+   * If no data is present, or if the repository does not know how to do it, return None.
+   * Note that there is no corresponding high-level call: date() and size() are just informational
+   * and used by drepo to print additional information concerning the repository data. In particular,
+   * the date may change as files are moved across cache levels, and sizes may be different depending
+   * on the way each repository stores data.
+   * 
+   * If you need reliable timestamp information, that is preserved across caching, you will need to
+   * add a timestamp to the saved metadata. In particular, there will be one in each SavedConfiguration,
+   * so that we can use them as roots for a garbage collection.
+   */
+  private[core] def date(selector: Selector): Option[Date]
+  /**
+   * Return, if known, the actual space occupied in the Repository by the data stored
+   * under Selector. If no data, or if the repo is unable to supply the information,
+   * return None.
+   * @see See the comment on date() for more information.
+   */
+  private[core] def size(selector: Selector): Option[Long]
 }
-class RepoLockException(msg: String) extends Exception(msg)
 
 /**
  * Abstract class for a readable/writeable repository of data, indexed by GetKeys.
@@ -315,8 +329,7 @@ abstract class Repository extends ReadableRepository {
   final def put[DataType, KeySource <: { def uuid: String }, Get <: GetKey[DataType]](data: DataType,
     keySource: KeySource, overwrite: Boolean = false)(implicit section: Section[DataType, KeySource, Get],
       m: Manifest[DataType] /*, log:distributed.logging.Logger = distributed.logging.NullLogger */ ): Get = {
-    lock
-    try {
+    safe {
       val uuid = keySource.uuid
       val get = section.newGet(uuid)
       // short circuit evaluation, hence hasData is called only if not overwrite
@@ -330,7 +343,7 @@ abstract class Repository extends ReadableRepository {
       store(out, section.selector(get))
       out.close() // if store has already closed, this does nothing.
       get
-    } finally { unlock }
+    }
   }
 
   // TODO: Add logging, following this scheme (more or less):
@@ -394,7 +407,7 @@ abstract class Repository extends ReadableRepository {
    * timestamp: it will be accessible as an instance of java.util.Date
    * using date(selector).
    */
-  protected def store(out: InputStream, selector: Selector): Unit
+  protected[core] def store(out: InputStream, selector: Selector): Unit
   /**
    * delete() removes the data at this selector, if any.
    * If no data is present, do nothing; if you need to check whether
@@ -409,9 +422,21 @@ abstract class Repository extends ReadableRepository {
    * in order to preserve the repository integrity.
    *
    * Returns true if the file was deleted, false otherwise.
+   * 
+   * If the repository acts as a proxy for some other repository, then
+   * delete the local copy first, then the remote copy as well.
+   * If the repository is a cache, which should be locally cleaned in order to keep
+   * it under a certain size for example, then use uncache(), below. 
+   * 
    */
   // TODO: do we need this? Or is it just unnecessary added complexity, at this time?
-  protected def delete(selector: Selector): Boolean
+  protected[core] def delete(selector: Selector): Boolean
+  /**
+   * Try to reduce the size of the data kept in the repository for this data item.
+   * If the repo is a cache for a remote repo, then flush out the local copy, but keep
+   * the remote one.
+   */
+  protected[core] def uncache(selector: Selector): Unit
 }
 
 // in client code use:
@@ -512,13 +537,13 @@ object Repository {
 
   /** Construct a repository that reads from a given URI and stores in a local cache. */
   def readingFrom(uri: String, cacheDir: File = defaultCacheDir): ReadableRepository =
-    new CachedRemoteReadableRepository(cacheDir, uri)
+    null //new CachedRemoteReadableRepository(cacheDir, uri)
   /** Construct a repository that reads/writes to a given URI and stores in a local cache. */
   def remote(uri: String, cred: Credentials, cacheDir: File = defaultCacheDir): Repository =
-    new CachedRemoteRepository(cacheDir, uri, cred)
+    null // new CachedRemoteRepository(cacheDir, uri, cred)
 
-  def localCache(cacheDir: File = defaultCacheDir): ReadableRepository =
-    new OfflineLocalCacheRepository(cacheDir)
+//  def localCache(cacheDir: File = defaultCacheDir): ReadableRepository =
+//    new OfflineLocalCacheRepository(cacheDir)
 
   def local(cacheDir: File = defaultCacheDir): Repository =
     new LocalRepository(cacheDir)

@@ -51,7 +51,7 @@ object LocalRepoHelper {
         if (subproj != "") log.debug("in subproject: " + subproj)
         shas foreach {
           case ArtifactSha(sha, location) =>
-            log.debug(location)
+            log.debug(location.location)
         }
     }
   }
@@ -136,7 +136,7 @@ object LocalRepoHelper {
    * Artifact that the project has in the repository.  It returns the project metadata and a sequence of
    * results of the operation run against each artifact in the repository.
    */
-<<<<<<< HEAD
+  // currently only used by getPublishedDeps(), while resolvePartialArtifacts() is also used directly by materializePartialProjectRepository
   protected def resolveArtifacts[T](key: GetProject,
     remote: ReadableRepository): ((File, ArtifactSha) => T) => ResolutionResult[T] =
     resolvePartialArtifacts(uuid, Seq.empty, remote)
@@ -231,10 +231,9 @@ object LocalRepoHelper {
           BuildArtifactsIn(artifacts, fromSpace, localRepo)
       })
 
-  def getProjectInfo(key: GetProject, remote: ReadableRepository) =
-    resolveArtifacts(key, remote)((x, y) => x -> y)
-
-  /** Checks whether or not a given project (by UUID) is published. */
+  /** Checks whether or not a given project (by UUID) is published.
+   *  Will throw an exception if not.
+   */
   def getPublishedDeps(uuid: GetProject, remote: ReadableRepository, log: Logger): BuildArtifactsOut = {
     // We run this to ensure all artifacts are resolved correctly.
     val ResolutionResult(meta, results, _, _) = resolveArtifacts(uuid, remote) { (inputStream, artifact) => () }
