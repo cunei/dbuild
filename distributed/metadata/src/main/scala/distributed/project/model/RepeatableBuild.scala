@@ -114,7 +114,11 @@ case class RepeatableDistributedBuild(builds: Seq[ProjectConfigAndExtracted]) {
             } yield current get dep.config.name getOrElse sys.error("Internal error: unexpected circular dependency. Please report.")
             val sortedDeps = dependencies.toSeq.sortBy(_.configAndExtracted.config.name)
 
-            // FIXME // FIXME // FIXME GetProject(p.uuid) should not be called in the line below: keep instead a map to keys once projects have been written.
+            // FIXME: GetProject(p.uuid) should not be called in the line below, in theory. A GetProject should be opaque
+            // and be built only via Repository (or sections).
+            // But: I cannot use Repository.getKey(p), or Repositories.sections, as drepo is not available here.
+            // The layering of projects should probably be a bit different. Apart from this instance, the only
+            // other parts in the code where the internals of a GetKey are exposed are in the drepo utility and in Repository.
 
             RepeatableDepInfo(info.version, sortedDeps.map(_.configAndExtracted.config.name), sortedDeps.map(p=>GetProject(p.uuid)))
         }

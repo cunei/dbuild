@@ -32,7 +32,6 @@ object LocalRepoHelper {
 
   /** Publishes the given repeatable build configuration to the repository. */
   def publishBuildMeta(saved: SavedConfiguration, remote: Repository, log: Logger): GetBuild =
-    // TODO: use the returned GetKey!
     remote.put(saved)
 
   def readBuildMeta(g: GetBuild, remote: ReadableRepository): Option[SavedConfiguration] = remote.get(g)
