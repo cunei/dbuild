@@ -36,14 +36,16 @@ object ProjectRepoMain {
   // optionally, add a repo subsubcommand to upload a build from one cache to another
   def main(args: Array[String]): Unit = {
     args.toSeq match {
+      // In this method only, drepo bypasses the standard keys interface, but that is necessary as
+      // it deals directly with uuids. No other part of the code should access uuids inside keys directly
       case Seq("project", uuid) =>
-        printProjectInfo(uuid)
+        printProjectInfo(GetProject(uuid))
       case Seq("project-files", uuid) =>
-        printProjectInfo(uuid, printFiles = true, printArts = false)
+        printProjectInfo(GetProject(uuid), printFiles = true, printArts = false)
       case Seq("project-artifacts", uuid) =>
-        printProjectInfo(uuid, printFiles = false, printArts = true)
-      case Seq("build", uuid) => printBuildInfo(uuid)
-      case Seq("build-projects", uuid) => printAllProjectInfo(uuid)
+        printProjectInfo(GetProject(uuid), printFiles = false, printArts = true)
+      case Seq("build", uuid) => printBuildInfo(GetBuild(uuid))
+      case Seq("build-projects", uuid) => printAllProjectInfo(GetBuild(uuid))
       case Seq("list-builds") => printAvailableBuilds()
       case Seq("list-projects") => printAvailableProjects()
       case _ =>
@@ -102,19 +104,19 @@ object ProjectRepoMain {
     (names zip projectsWithMeta) foreach {
       case (paddedName, (geProjecttKey, Some(p))) =>
         println("  * " + geProjecttKey + " " + paddedName + " @ " + p.config.uri)
+      case (_, (_, None)) => sys.error("Internal error in drepo, please report.")
     }
   }
 
-  private def printProjectHeader(uuid: String): Unit =
-    println("--- Project Build: " + uuid)
+  private def printProjectHeader(key: GetProject): Unit =
+    println("--- Project Build: " + key)
 
-  def getProject(uuid: String): Option[RepeatableProjectBuild] = {
-    printProjectHeader(uuid)
-    val key = GetProject(uuid)
+  def getProject(key: GetProject): Option[RepeatableProjectBuild] = {
+    printProjectHeader(key)
     cache.get(key)
   }
-  def printProjectInfo(uuid: String, printArts: Boolean = true, printFiles: Boolean = true, name: Option[String] = None): Unit = {
-    val project = getProject(uuid)
+  def printProjectInfo(key: GetProject, printArts: Boolean = true, printFiles: Boolean = true, name: Option[String] = None): Unit = {
+    val project = getProject(key)
     project match {
       case None => name match {
         case None => println("<project not available>")
@@ -188,9 +190,8 @@ object ProjectRepoMain {
     case x => "%4d" format (x)
   }
 
-  def printBuildInfo(uuid: String): Unit = {
-    println("--- Repeatable Build: " + uuid)
-    val key = GetBuild(uuid)
+  def printBuildInfo(key: GetBuild): Unit = {
+    println("--- Repeatable Build: " + key)
     cache.get(key) match {
       case Some(SavedConfiguration(expandedDBuildConfig, build)) =>
         println(" = Projects = ")
@@ -205,18 +206,15 @@ object ProjectRepoMain {
     }
   }
 
-  def printAllProjectInfo(buildUUID: String): Unit = {
-    println("--- Repeatable Build: " + buildUUID)
-    val savedOpt = cache.get(GetBuild(buildUUID))
+  def printAllProjectInfo(buildKey: GetBuild): Unit = {
+    println("--- Repeatable Build: " + buildKey)
+    val savedOpt = cache.get(buildKey)
     savedOpt match {
       case None => println("<build not found>")
       case Some(SavedConfiguration(expandedDBuildConfig, build)) =>
         build.repeatableBuilds foreach { p =>
-          // drepo bypasses the standard keys interface, but that is necessary as
-          // it deals directly with uuids. No other part of the code should
-          // access uuids inside keys directly
           val key = Repository.getKey[RepeatableProjectBuild](p)
-          printProjectInfo(key.uuid, name = Some(p.config.name))
+          printProjectInfo(key, name = Some(p.config.name))
         }
     }
   }
