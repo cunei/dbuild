@@ -30,7 +30,7 @@ object MvnBuildSystem extends BuildSystemCore {
   }
   
   def runBuild(project: RepeatableProjectBuild, dir: File, input: BuildInput, localBuildRunner: LocalBuildRunner,
-      buildData: BuildData): BuildArtifactsOut = {
+      buildData: BuildData): ArtifactsOut = {
     val log = buildData.log
     log.info("Running maven...")
     val mc = project.extra[ExtraType]
@@ -43,6 +43,6 @@ object MvnBuildSystem extends BuildSystemCore {
     if(result.hasExceptions()) {
       result.getExceptions.asScala foreach (t => log.trace(t))
     } else log.info("DONE!")
-    BuildArtifactsOut(Seq.empty)
+    ArtifactsOut(Seq.empty)
   }
 }

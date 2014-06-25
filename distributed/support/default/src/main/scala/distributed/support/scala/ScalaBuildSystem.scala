@@ -64,7 +64,7 @@ object ScalaBuildSystem extends BuildSystemCore {
   // but not for the submodules. After building the core, we will call localBuildRunner.checkCacheThenBuild() on each module,
   // which will in turn resolve it and then build it (if not already in cache).
   def runBuild(project: RepeatableProjectBuild, dir: File, input: BuildInput, localBuildRunner: LocalBuildRunner,
-    buildData: BuildData): BuildArtifactsOut = {
+    buildData: BuildData): ArtifactsOut = {
     val ec = project.extra[ExtraType]
     val log = buildData.log
 
@@ -263,8 +263,8 @@ object ScalaBuildSystem extends BuildSystemCore {
         filterNot(file => file.isDirectory || file.getName == "maven-metadata-local.xml").map(f)
     }
 
-    def projSHAs(artifacts: Seq[ProjectRef], crossSuffix: String): Seq[ArtifactSha] = scanFiles(artifacts, crossSuffix) {
-      LocalRepoHelper.makeArtifactSha(_, localRepo)
+    def projSHAs(artifacts: Seq[ProjectRef], crossSuffix: String): Seq[ArtifactRelative] = scanFiles(artifacts, crossSuffix) {
+      LocalRepoHelper.makeArtifactRelative(_, localRepo)
     }
 
     // Scala artifacts used to be always with a plain version number. However, now some modules may be built
@@ -273,12 +273,12 @@ object ScalaBuildSystem extends BuildSystemCore {
     // Therefore we need to inspect the files (we try to locate the poms), and determine the proper cross
     // suffix for each.
     def getScalaArtifactsOut() =
-      BuildArtifactsOut(meta.projects map {
+      ArtifactsOut(meta.projects map {
         proj =>
           val (cross, ver) = findCrossAndVer(localRepo, proj.organization, proj.name)
           // The "None" in ArtifactLocation is the set of extraAttributes, which is only relevant in case
           // the artifact is an sbt plugin; we do not expect the Scala compiler to produce sbt plugins.
-          BuildSubArtifactsOut(proj.name, proj.artifacts map { ArtifactLocation(_, ver, cross, pluginAttrs = None) },
+          SubArtifactsOut(proj.name, proj.artifacts map { ArtifactLocation(_, ver, cross, pluginAttrs = None) },
             projSHAs(proj.artifacts, cross),
             com.typesafe.reactiveplatform.manifest.ModuleInfo(organization = proj.organization,
               name = proj.name, version = version, com.typesafe.reactiveplatform.manifest.ModuleAttributes(None, None))

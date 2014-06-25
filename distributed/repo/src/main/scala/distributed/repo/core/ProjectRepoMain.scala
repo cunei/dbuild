@@ -79,6 +79,9 @@ object ProjectRepoMain {
           case Some(saved) =>
             println("  * " + uuid + " @ " + date)
             val SavedConfiguration(expandedDBuildConfig, build) = saved
+            // TODO: We should probably not save the full RepeatableProjectBuild inside
+            // the SavedConfiguration, but just a GetProject. That would reduce the used
+            // space in the cache, and avoid data duplication that may lead to inconsistencies.
             val projects = build.repeatableBuilds map { project => (project.configAndExtracted.config.name, project.uuid) }
             val names = padStrings(projects map (_._1))
             val uuids = projects map (_._2)
@@ -97,8 +100,8 @@ object ProjectRepoMain {
       filterNot(_._2.nonEmpty)
     val names = padStrings(projectsWithMeta map (_._2.get.config.name))
     (names zip projectsWithMeta) foreach {
-      case (paddedName, (GetProject(uuid), Some(p))) =>
-        println("  * " + uuid + " " + paddedName + " @ " + p.config.uri)
+      case (paddedName, (geProjecttKey, Some(p))) =>
+        println("  * " + geProjecttKey + " " + paddedName + " @ " + p.config.uri)
     }
   }
 
@@ -131,8 +134,8 @@ object ProjectRepoMain {
 
   def printProjectDependencies(p: RepeatableProjectBuild): Unit = {
     println(" -- Dependencies --")
-    for (GetProject(uuid) <- (p.depInfo flatMap (_.dependencyUUIDs)).distinct)
-      println("    * " + uuid)
+    for (getProjectKey <- (p.depInfo flatMap (_.dependencyUUIDs)).distinct)
+      println("    * " + getProjectKey)
   }
 
   // TODO: now that module information is available, we might print artifacts grouped by modules
@@ -192,6 +195,8 @@ object ProjectRepoMain {
       case Some(SavedConfiguration(expandedDBuildConfig, build)) =>
         println(" = Projects = ")
         build.repeatableBuilds foreach { project =>
+          // TODO: we should have project keys in the the SavedConfiguration,
+          // not the full RepeatableProjectBuilds
           println("  - " + project.uuid + " " + project.config.name)
         }
         println(" = Repeatable dbuild configuration =")

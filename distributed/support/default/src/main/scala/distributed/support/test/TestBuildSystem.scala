@@ -30,7 +30,7 @@ object TestBuildSystem extends BuildSystemCore {
   }
 
   def runBuild(project: RepeatableProjectBuild, dir: File, input: BuildInput, localBuildRunner: LocalBuildRunner,
-      buildData: BuildData): BuildArtifactsOut = {
+      buildData: BuildData): ArtifactsOut = {
     val ec = project.extra[ExtraType]
 
     val version = input.version
@@ -40,9 +40,9 @@ object TestBuildSystem extends BuildSystemCore {
     // fail once every three runs on average
     val rand = new java.util.Random
     if (rand.nextInt(3)==0) throw new Exception("You've been unlucky today..!")
-    BuildArtifactsOut(meta.projects map {
+    ArtifactsOut(meta.projects map {
       proj =>
-        BuildSubArtifactsOut(proj.name, Seq.empty, Seq.empty,
+        SubArtifactsOut(proj.name, Seq.empty, Seq.empty,
           com.typesafe.reactiveplatform.manifest.ModuleInfo(organization = proj.organization,
             name = proj.name, version = version, com.typesafe.reactiveplatform.manifest.ModuleAttributes(None, None)))
     })

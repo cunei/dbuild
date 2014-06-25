@@ -38,7 +38,8 @@ object LocalRepoHelper {
   def readBuildMeta(g: GetBuild, remote: ReadableRepository): Option[SavedConfiguration] = remote.get(g)
 
   def makeArtifactRelative(file: File, localRepo: File) = {
-    val name = IO.relativize(localRepo, file) getOrElse sys.error("Internal error while relativizing")
+    val name = IO.relativize(localRepo, file) getOrElse
+      sys.error("Internal error while relativizing " + file.getCanonicalPath() + " against " + localRepo.getCanonicalPath())
     ArtifactRelative(name)
   }
 
@@ -234,10 +235,11 @@ object LocalRepoHelper {
   /** Checks whether or not a given project (by UUID) is published.
    *  Will throw an exception if not.
    */
-  def getPublishedDeps(uuid: GetProject, remote: ReadableRepository, log: Logger): BuildArtifactsOut = {
+  def getPublishedDeps(project: RepeatableProjectBuild, remote: ReadableRepository, log: Logger): BuildArtifactsOut = {
     // We run this to ensure all artifacts are resolved correctly.
-    val ResolutionResult(meta, results, _, _) = resolveArtifacts(uuid, remote) { (inputStream, artifact) => () }
-    log.info("Found cached project build, uuid " + uuid)
+    val key = Repository.getKey[RepeatableProjectBuild](project)
+    val ResolutionResult(meta, results, _, _) = resolveArtifacts(key, remote) { (inputStream, artifact) => () }
+    log.info("Found cached project build: " + key)
     meta.versions
   }
 

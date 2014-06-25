@@ -94,7 +94,7 @@ class IvyBuildSystem(repos: List[xsbti.Repository], workingDir: File) extends Bu
   // build system is doing at this time
 
   def runBuild(project: RepeatableProjectBuild, baseDir: File, input: BuildInput, localBuildRunner: LocalBuildRunner,
-    buildData: BuildData): BuildArtifactsOut = {
+    buildData: BuildData): ArtifactsOut = {
     val log = buildData.log
     log.debug("BuildInput is: " + input)
     // first, get the dependencies
@@ -151,9 +151,9 @@ class IvyBuildSystem(repos: List[xsbti.Repository], workingDir: File) extends Bu
     val localRepo = input.outRepo
     IvyMachinery.publishIvy(response, localRepo, rewrittenDeps, version, log)
     val modulePluginInfo = pluginAttrs(module)
-    val q = BuildArtifactsOut(Seq(BuildSubArtifactsOut("default-ivy-project",
+    val q = ArtifactsOut(Seq(SubArtifactsOut("default-ivy-project",
       publishArts,
-      localRepo.***.get.filterNot(file => file.isDirectory) map { LocalRepoHelper.makeArtifactSha(_, localRepo) },
+      localRepo.***.get.filterNot(file => file.isDirectory) map { LocalRepoHelper.makeArtifactRelative(_, localRepo) },
       com.typesafe.reactiveplatform.manifest.ModuleInfo(organization = module.getOrganisation,
         name = fixName(module.getName), version = version, {
           import com.typesafe.reactiveplatform.manifest.ModuleAttributes

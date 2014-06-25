@@ -24,6 +24,7 @@ import distributed.support.sbt.SbtRunner.{ sbtIvyCache, rewireInputFile, buildAr
 import distributed.support.sbt.{ RewireInput, GenerateArtifactsInput }
 import distributed.support.SbtUtil.{ pluginAttrs, fixAttrs }
 import distributed.project.model.SbtPluginAttrs
+import distributed.project.model.GetBuild
 
 object DistributedRunner {
 
@@ -622,7 +623,7 @@ object DistributedRunner {
     state3
   }
 
-  def loadBuildArtifacts(localRepos: Seq /*Levels*/ [File], builduuid: String, thisProject: String, log: Logger, debug: Boolean) = {
+  def loadBuildArtifacts(localRepos: Seq /*Levels*/ [File], builduuid: GetBuild, thisProject: String, log: Logger, debug: Boolean) = {
     import distributed.repo.core._
     val cache = Repository.default
     val project = findRepeatableProjectBuild(builduuid, thisProject, log)
@@ -633,7 +634,7 @@ object DistributedRunner {
     (project, artifacts)
   }
 
-  def findRepeatableProjectBuild(builduuid: String, thisProject: String, log: Logger) = {
+  def findRepeatableProjectBuild(builduuid: GetBuild, thisProject: String, log: Logger) = {
     import distributed.repo.core._
     log.info("Finding information for project " + thisProject + " in build " + builduuid)
     val cache = Repository.default

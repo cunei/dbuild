@@ -30,16 +30,16 @@ object NilBuildSystem extends BuildSystemCore {
   }
 
   def runBuild(project: RepeatableProjectBuild, dir: File, input: BuildInput, localBuildRunner: LocalBuildRunner,
-      buildData: BuildData): BuildArtifactsOut = {
+      buildData: BuildData): ArtifactsOut = {
     val ec = project.extra[ExtraType]
 
     val version = input.version
     val meta=readMeta(project.config)
     buildData.log.info(meta.subproj.mkString("These subprojects will be built: ", ", ", ""))
 
-    BuildArtifactsOut(meta.projects map {
+    ArtifactsOut(meta.projects map {
       proj =>
-        BuildSubArtifactsOut(proj.name, Seq.empty, Seq.empty,
+        SubArtifactsOut(proj.name, Seq.empty, Seq.empty,
           com.typesafe.reactiveplatform.manifest.ModuleInfo(organization = proj.organization,
             name = proj.name, version = version, com.typesafe.reactiveplatform.manifest.ModuleAttributes(None, None)))
     })

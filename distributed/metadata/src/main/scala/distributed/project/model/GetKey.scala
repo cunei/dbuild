@@ -11,7 +11,10 @@ import java.io.File
  * Since GetKeys are in turn serialized/deserialized as part of metadata, their definition is in the
  * project d-metadata, although logically they belong next to the definition of Key and Repository.
  */
-sealed abstract class GetKey[DataType] extends { def uuid: String }
+sealed abstract class GetKey[DataType] extends {
+  def uuid: String
+  override def toString: String = uuid
+}
 /**
  * An access GetKey used to retrieve a raw artifact.
  */

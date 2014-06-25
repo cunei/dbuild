@@ -26,7 +26,7 @@ class LocalBuildRunner(builder: BuildRunner,
     val log = buildData.log
     try {
       try {
-        val artifactsOut = LocalRepoHelper.getPublishedDeps(build.uuid, repository, log) // will throw exception if not in cache yet
+        val artifactsOut = LocalRepoHelper.getPublishedDeps(build, repository, log) // will throw exception if not in cache yet
         LocalRepoHelper.debugArtifactsInfo(artifactsOut, log)
         BuildUnchanged(build.config.name, children, artifactsOut)
       } catch {

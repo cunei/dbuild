@@ -26,6 +26,8 @@ import distributed.support.NameFixer.fixName
 import _root_.sbt.NameFilter
 import org.apache.ivy
 import distributed.project.build.BuildDirs.localRepos
+import distributed.repo.core.sections._
+import distributed.repo.core.Repository
 
 /**
  * The "assemble" build system accepts a list of nested projects, with the same format
@@ -195,7 +197,7 @@ object AssembleBuildSystem extends BuildSystemCore {
   // Therefore, we will call localBuildRunner.checkCacheThenBuild() on each part,
   // which will in turn resolve it and then build it (if not already in cache).
   def runBuild(project: RepeatableProjectBuild, dir: File, input: BuildInput, localBuildRunner: LocalBuildRunner,
-    buildData: BuildData): BuildArtifactsOut = {
+    buildData: BuildData): ArtifactsOut = {
 
     val ec = project.extra[ExtraType]
     val version = input.version // IGNORED!!
@@ -247,8 +249,8 @@ object AssembleBuildSystem extends BuildSystemCore {
         filterNot(file => file.isDirectory || file.getName == "maven-metadata-local.xml").map(f)
     }
 
-    def projSHAs(artifacts: Seq[ProjectRef], crossSuffix: String): Seq[ArtifactSha] = scanFiles(artifacts, crossSuffix) {
-      LocalRepoHelper.makeArtifactSha(_, localRepo)
+    def projSHAs(artifacts: Seq[ProjectRef], crossSuffix: String): Seq[ArtifactRelative] = scanFiles(artifacts, crossSuffix) {
+      LocalRepoHelper.makeArtifactRelative(_, localRepo)
     }
 
     // OK, now build the parts
@@ -314,11 +316,11 @@ object AssembleBuildSystem extends BuildSystemCore {
     // ------
     //
     // now, let's retrieve the parts' artifacts again (they have already been published)
-    val uuids = repeatableProjectBuilds map { _.uuid }
+    val keys = repeatableProjectBuilds map { Repository.getKey[RepeatableProjectBuild](_) }
     log.info("Retrieving artifacts")
     log.debug("into " + localRepo)
     val artifactLocations = LocalRepoHelper.getArtifactsFromUUIDs(log.info, localBuildRunner.repository,
-      Seq(localRepo), Seq(uuids), Seq(""), buildData.debug) // retrieve only the base level, space "" (no external dependencies)
+      Seq(localRepo), Seq(keys), Seq(""), buildData.debug) // retrieve only the base level, space "" (no external dependencies)
 
     // ------
     // ok. At this point, we have:
@@ -426,7 +428,7 @@ object AssembleBuildSystem extends BuildSystemCore {
                 }
               }
               try {
-                val OrgNameVerFilenamesuffix(org, oldName, ver, suffix1, suffix2, isMaven, isIvyXml) = oldLocation
+                val OrgNameVerFilenamesuffix(org, oldName, ver, suffix1, suffix2, isMaven, isIvyXml) = oldLocation.location
                 if (isScalaCore(oldName, org)) sha else {
                   val newName = patchName(oldName)
                   if (newName == oldName) sha else {
@@ -445,8 +447,7 @@ object AssembleBuildSystem extends BuildSystemCore {
 
                     val oldFile = fileLoc(oldName)
                     val newFile = fileLoc(newName)
-                    val newLocation = IO.relativize(localRepo, newFile) getOrElse
-                      sys.error("Internal error while relativizing " + newFile.getCanonicalPath() + " against " + localRepo.getCanonicalPath())
+                    val newLocation = LocalRepoHelper.makeArtifactRelative(newFile, localRepo)
                     fileDir(newName).mkdirs() // ignore if already present
                     if (!oldFile.renameTo(newFile))
                       sys.error("cannot rename " + oldLocation + " to " + newLocation + ".")
@@ -614,10 +615,9 @@ object AssembleBuildSystem extends BuildSystemCore {
       updateChecksumFiles(file)
     }
 
-    // dbuild SHAs must be re-computed (since the POM/Ivy files changed)
     // We preserve the list of original subprojects (and consequently modules),
     // where the subproject names may be slightly renamed in order to avoid collisions.
-    val out = BuildArtifactsOut(artifactsMap flatMap { _._2.results })
+    val out = ArtifactsOut(artifactsMap flatMap { _._2.results })
     log.debug("out: " + writeValue(out))
     out
 

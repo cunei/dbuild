@@ -21,8 +21,9 @@ import java.io.PrintWriter
  * This is an sbt-specific functionality, which replaces the previous "dbuild-setup" plugin command.
  */
 object Checkout {
-  def dbuildCheckout(uuid: String, projectName: String, path: String, debug: Boolean,
+  def dbuildCheckout(uuidString: String, projectName: String, path: String, debug: Boolean,
       useLocalResolvers: Boolean, localRepos: List[xsbti.Repository]) = {
+    val buildKey = GetBuild(uuidString)  // NOTA BENE: This bit bypasses the interface of GetKey, which should normally be opaque
     val dir = (new File(path)).getCanonicalFile
     if (dir.exists)
       sys.error("The path \"" + path + "\" already exists. Please move it aside, or use a different name.")
@@ -33,16 +34,16 @@ object Checkout {
     val cache = Repository.default
     val log = ConsoleLogger(debug)
     println("Please wait...") // reloading the metadata may take several seconds
-    val buildMeta = LocalRepoHelper.readBuildMeta(uuid, cache) getOrElse
-      sys.error("The requested UUID \"" + uuid + "\" was not found in the cache.")
-    log.debug("Build UUID " + uuid + " found in cache.")
+    val buildMeta = LocalRepoHelper.readBuildMeta(buildKey, cache) getOrElse
+      sys.error("The requested UUID \"" + buildKey + "\" was not found in the cache.")
+    log.debug("Build UUID " + buildKey + " found in cache.")
     buildMeta match {
       case SavedConfiguration(expandedDBuildConfig, build) =>
         val allProjects = build.repeatableBuilds.map(_.config.name)
         if (allProjects.contains(dir.getName))
           sys.error("Using a directory name that is identical to the name of an sbt subproject of this project may confuse dbuild, due to an sbt restriction. Please use a different name.")
         val project = build.repeatableBuilds.find(_.config.name == projectName) getOrElse
-          sys.error("Project \"" + projectName + "\" was not found in build " + uuid + ".")
+          sys.error("Project \"" + projectName + "\" was not found in build " + buildKey + ".")
         if (project.config.system != "sbt")
           sys.error("Project \"" + projectName + "\" is not sbt-based. Cannot continue.")
         log.debug("Found project \"" + projectName + "\", project UUID: " + project.uuid)

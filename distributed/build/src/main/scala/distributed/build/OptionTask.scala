@@ -7,6 +7,7 @@ import Logger.prepareLogMsg
 import distributed.project.model._
 import java.io.File
 import distributed.repo.core.{ LocalRepoHelper, Repository }
+import distributed.repo.core.sections._
 
 /**
  * Defines a task that will run before or after the build, defined somewhere
@@ -104,7 +105,8 @@ abstract class OptionTask(log: Logger) {
             case SelectorSubProjects(SubProjects(from, publish)) => publish
             case SelectorProject(_) => Seq[String]()
           }
-          val (arts, modInfos, msg) = LocalRepoHelper.materializePartialProjectRepository(proj.uuid, subprojs, cache, dir, debug = false)
+          val projKey = Repository.getKey[RepeatableProjectBuild](proj)
+          val (arts, modInfos, msg) = LocalRepoHelper.materializePartialProjectRepository(projKey, subprojs, cache, dir, debug = false)
           msg foreach { log.info(_) }
           (arts, modInfos)
       }
