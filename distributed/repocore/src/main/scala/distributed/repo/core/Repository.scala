@@ -3,18 +3,12 @@ package repo
 package core
 
 import java.io.File
-import distributed.project.model.Utils.{ testSectionName, testIndexName }
 import java.util.Date
 import org.apache.commons.io.IOUtils
 import sbt.Path._
 import java.io.InputStream
 import java.io.OutputStream
 import java.io.OutputStreamWriter
-import java.io.BufferedInputStream
-import java.util.zip.GZIPInputStream
-import java.util.zip.GZIPOutputStream
-import project.model._
-import Utils.{ readValue, writeValue }
 
 /*
  * This implementation of repositories operates on two levels. Internally, all concrete
@@ -54,7 +48,19 @@ import Utils.{ readValue, writeValue }
  * metadata project, although logically they belong next to the definition of Key and Repository.
  */
 
-// sealed abstract class GetKey[DataType] extends { def uuid: String }
+/**
+ * A GetKey is a generic, but type-safe, way to access some data stored in a repository.
+ * It is only ever be created by the put() call of Repository, and used by its get(),
+ * but never created explicitly by any other user code.
+ * Its content should be treated as opaque: just store it somewhere, and use it later to retrieve data.
+ * 
+ * Since GetKeys are in turn serialized/deserialized as part of metadata, their definition is in the
+ * project d-metadata, although logically they belong next to the definition of Key and Repository.
+ */
+abstract class GetKey[DataType] extends {
+  def uuid: String
+  override def toString: String = uuid
+}
 
 /**
  * A Section structure contains the logic needed to interface the higher, type-safe
@@ -75,7 +81,7 @@ import Utils.{ readValue, writeValue }
 /* In theory, all Section methods should be private to Repository, or at least to the enclosing package.
  * The Sections themselves need to be public, as they are used as implicit parameters by put() and get().
  */
-sealed abstract class Section[DataType, KeySource <: { def uuid: String }, Get <: GetKey[DataType]] {
+abstract class Section[DataType, KeySource <: { def uuid: String }, Get <: GetKey[DataType]] {
   def newGet(uuid: String): Get
   def dataToStream(d: DataType)(implicit m: Manifest[DataType]): InputStream
   def streamToData(is: InputStream)(implicit m: Manifest[DataType]): DataType
@@ -101,71 +107,22 @@ sealed abstract class Section[DataType, KeySource <: { def uuid: String }, Get <
 }
 
 /**
- * In order to get a sha for a raw file/inputstream that contains an artifact,
- * wrap it into a RawUUID. This class is not serialized.
- */
-case class RawUUID(f: File) {
-  def uuid = hashing.files sha1 f
-}
-
-/**
- * Use "import sections._" in client code, to bring the implicit repository Keys into scope.
- */
-package object sections {
-  implicit object RawSection extends Section[InputStream, RawUUID, GetRaw] {
-    val name = "artifactFiles"
-    def newGet(uuid: String) = GetRaw(uuid)
-    def dataToStream(d: InputStream)(implicit m: Manifest[InputStream]): InputStream = d
-    def streamToData(is: InputStream)(implicit m: Manifest[InputStream]) = is
-  }
-  /**
-   * MetaSection groups the sections used to access JSON-serializable metadata.
-   * We define streamToData() and dataToStream here for all such metadata classes; since the serialized
-   * form is simple textual JSON, we can automatically filter it through a gzip compressor,
-   * in order to save space.
-   */
-  private[sections] sealed abstract class MetaSection[DataType, KeySource <: { def uuid: String }, Get <: GetKey[DataType]]
-    extends Section[DataType, KeySource, Get] {
-    def streamToData(is: InputStream)(implicit m: Manifest[DataType]): DataType =
-      readValue[DataType](new GZIPInputStream(new BufferedInputStream(is))) // GZIPInputStream will decompress
-    def dataToStream(d: DataType)(implicit m: Manifest[DataType]): InputStream = {
-      val asString = writeValue(d)
-      val asBytes = asString.getBytes()
-      // As an alternative, one could conceivably use Piped streams, but
-      // they are rather quirky and best avoided. All our artifacts should easily
-      // fit in array buffers anyway.
-      val bos = new java.io.ByteArrayOutputStream()
-      val zip = new GZIPOutputStream(bos)
-      zip.write(asBytes)
-      zip.close()
-      new java.io.ByteArrayInputStream(bos.toByteArray())
-    }
-  }
-  implicit object ProjectSection extends MetaSection[RepeatableProjectBuild, RepeatableProjectBuild, GetProject] {
-    val name = "projects"
-    def newGet(uuid: String) = GetProject(uuid)
-  }
-  implicit object BuildSection extends MetaSection[SavedConfiguration, SavedConfiguration, GetBuild] {
-    val name = "fullBuilds"
-    def newGet(uuid: String) = GetBuild(uuid)
-  }
-  implicit object ArtifactsSection extends MetaSection[BuildArtifactsOut, RepeatableProjectBuild, GetArtifacts] {
-    val name = "artifactsData"
-    def newGet(uuid: String) = GetArtifacts(uuid)
-  }
-  implicit object ExtractSection extends MetaSection[ExtractedBuildMeta, ExtractionConfig, GetExtract] {
-    val name = "extractions"
-    def newGet(uuid: String) = GetExtract(uuid)
-  }
-}
-
-/**
  * A Selector is a unique reference to an actual piece of data saved to a repository (at the lower,
  * type-unsafe conceptual level). Selectors (and Sections) are never serialized/deserialized.
  */
 private[core] case class Selector(section: String, index: String) {
-  testSectionName(section)
-  testIndexName(index)
+  import Selector.checkName
+  checkName(section)
+  checkName(index)
+}
+object Selector {
+  private val validChars = (('a' to 'z') ++ ('0' to '9')).toSet
+  def checkName(name:String) = {
+    val lower = name.toLowerCase
+    if (!(lower forall (c => validChars(c)))) {
+      sys.error("Selector names can only contain letters and numbers. Unexpected: " + name)
+    }
+  }
 }
 /**
  * Abstract class for a readable repository of data, indexed by GetKeys.
@@ -439,62 +396,6 @@ abstract class Repository extends ReadableRepository {
   protected[core] def uncache(selector: Selector): Unit
 }
 
-// in client code use:
-// import distributed.repo.core
-// import distributed.repo.core.keys._
-
-// This is technically dead code, but it is useful to leave it in an compile it with
-// the rest, in order to make sure that all its test calls compile successfully.
-// Please leave this code where it is.
-private object RepositoryCompilationTest {
-  def z(r: Repository, key1: RepeatableProjectBuild, key2: ArtifactSha, key3: BuildArtifactsOut, data: InputStream, f: File) = {
-    // bring all the implicit Sections into scope
-    import sections._
-    val rawuuid = RawUUID(f)
-
-    // usage examples:
-
-    val ak2 = r.put(data, rawuuid)
-    val am = r.get(ak2)
-    val amk2 = r.get(rawuuid)
-    val amk = r.get(r.getKey(rawuuid))
-    val ak1 = r.put(key1, key1)
-    val an = r.get(ak1)
-    val ank2 = r.get[RepeatableProjectBuild](key1)
-    val ank = r.get(r.getKey[RepeatableProjectBuild](key1))
-    val ak3 = r.put(key1)
-    val ao = r.get(ak3)
-    val ak4 = r.put(key3, key1)
-    val ap = r.get(ak4)
-    val apk2 = r.get[BuildArtifactsOut](key1)
-    val apk = r.get(r.getKey[BuildArtifactsOut](key1))
-    val al = r.enumerate[BuildArtifactsOut]()
-
-    // same examples, but let's also check that all the types are correct:
-
-    val k2: GetRaw = r.put(data, rawuuid)
-    val m: Option[InputStream] = r.get(k2)
-    val mk2: Option[InputStream] = r.get(rawuuid)
-    val mk: Option[InputStream] = r.get(r.getKey(rawuuid))
-    val k1: GetProject = r.put(key1, key1)
-    val n: Option[RepeatableProjectBuild] = r.get(k1)
-    val nk2: Option[RepeatableProjectBuild] = r.get[RepeatableProjectBuild](key1)
-    val nk: Option[RepeatableProjectBuild] = r.get(r.getKey[RepeatableProjectBuild](key1))
-    val k3: GetProject = r.put(key1)
-    val o: Option[RepeatableProjectBuild] = r.get(k3)
-    val k4: GetArtifacts = r.put(key3, key1)
-    val p: Option[BuildArtifactsOut] = r.get(k4)
-    val pk2: Option[BuildArtifactsOut] = r.get[BuildArtifactsOut](key1)
-    val pk: Option[BuildArtifactsOut] = r.get(r.getKey[BuildArtifactsOut](key1))
-    val l: Seq[GetArtifacts] = r.enumerate[BuildArtifactsOut]()
-
-    // and now, let's make some mistakes.
-    //    val k5:GetArtifacts=r.put(key1, key3)
-    // This should tell you: could not find implicit value for parameter section: Section[RepeatableProjectBuild,BuildArtifactsOut,Get]
-    // which is just perfect, as we accidentally swapped key and data
-  }
-}
-
 object Repository {
 
   /**
@@ -508,51 +409,4 @@ object Repository {
     def apply[KeySource <: { def uuid: String }, Get <: GetKey[DataType]](source: KeySource)(implicit section: Section[DataType, KeySource, Get], m: Manifest[KeySource]): Get =
       section.newGet(source.uuid)
   }
-
-  def default: Repository = {
-    // Look for repository/credentials file
-    def cacheDir = sysPropsCacheDir getOrElse defaultUserHomeCacheDir
-    def repoCredFile = GlobalDirs.repoCredFile
-
-    def readCredFile(f: File): Option[(String, Credentials)] =
-      if (f.exists) {
-        val props = new java.util.Properties
-        sbt.IO.load(props, f)
-        def getProp(name: String): Option[String] =
-          Option(props getProperty name)
-        for {
-          url <- getProp("remote.url")
-          user <- getProp("remote.user")
-          pw <- getProp("remote.password")
-        } yield url -> Credentials(user, pw)
-      } else None
-
-    def remoteRepo =
-      for {
-        (url, credentials) <- readCredFile(repoCredFile)
-      } yield remote(url, credentials, cacheDir)
-    def localRepo = local(cacheDir)
-    remoteRepo getOrElse localRepo
-  }
-
-  /** Construct a repository that reads from a given URI and stores in a local cache. */
-  def readingFrom(uri: String, cacheDir: File = defaultCacheDir): ReadableRepository =
-    null //new CachedRemoteReadableRepository(cacheDir, uri)
-  /** Construct a repository that reads/writes to a given URI and stores in a local cache. */
-  def remote(uri: String, cred: Credentials, cacheDir: File = defaultCacheDir): Repository =
-    null // new CachedRemoteRepository(cacheDir, uri, cred)
-
-//  def localCache(cacheDir: File = defaultCacheDir): ReadableRepository =
-//    new OfflineLocalCacheRepository(cacheDir)
-
-  def local(cacheDir: File = defaultCacheDir): Repository =
-    new LocalRepository(cacheDir)
-
-  def defaultCacheDir = sysPropsCacheDir getOrElse defaultUserHomeCacheDir
-
-  def sysPropsCacheDir =
-    sys.props get "dbuild.cache.dir" map (new File(_))
-
-  def defaultUserHomeCacheDir = GlobalDirs.userCache
-
 }

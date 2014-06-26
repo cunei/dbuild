@@ -45,7 +45,7 @@ object Utils {
           throw new JsonMappingException(e.getMessage.split("\n")(0) + m2, e.getCause)
       }
     }
-  def readValue[T](f: File)(implicit m: Manifest[T]) =
+  def readValue[T](f: File)(implicit m: Manifest[T]):T =
     readValue[T](new BufferedInputStream(new FileInputStream(f)))
   def readValue[T](f: InputStream)(implicit m: Manifest[T]) = readValueT[T](parseReader(new InputStreamReader(f)))
   def readValue[T](s: String)(implicit m: Manifest[T]) = readValueT[T](parseString(s))
@@ -93,7 +93,7 @@ object Utils {
     }
     // for projects, "default" is also illegal (but it's legal for spaces)
     if (!dotsAllowed && lower == "default") {
-      sys.error("The project name \"default\"is reserved; please choose a different name.")
+      sys.error("The name \"default\"is reserved; please choose a different name.")
     }
     if (!(lower forall (c => validChars(c) || (dotsAllowed && c == '.')))) {
       sys.error("Names can only contain letters, numbers, dashes, underscores" + (if (dotsAllowed) ", and dots" else "") + ", found: \"" + name + "\".")
@@ -107,9 +107,7 @@ object Utils {
   }
   def testProjectName(name: String) = testName(name, dotsAllowed = false)
   def testSpaceName(name: String) = testName(name, dotsAllowed = true)
-  def testSectionName(name: String) = testName(name, dotsAllowed = true)
-  def testIndexName(name: String) = testName(name, dotsAllowed = true)
-
+  
   // spaces-related utilities
 
   // returns the list of this space + all containing spaces

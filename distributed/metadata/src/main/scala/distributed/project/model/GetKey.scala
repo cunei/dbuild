@@ -1,20 +1,8 @@
 package distributed.project.model
 import java.io.InputStream
 import java.io.File
+import distributed.repo.core.GetKey
 
-/**
- * A GetKey is a generic, but type-safe, way to access some data stored in a repository.
- * It is only ever be created by the put() call of Repository, and used by its get(),
- * but never created explicitly by any other user code.
- * Its content should be treated as opaque: just store it somewhere, and use it later to retrieve data.
- * 
- * Since GetKeys are in turn serialized/deserialized as part of metadata, their definition is in the
- * project d-metadata, although logically they belong next to the definition of Key and Repository.
- */
-sealed abstract class GetKey[DataType] extends {
-  def uuid: String
-  override def toString: String = uuid
-}
 /**
  * An access GetKey used to retrieve a raw artifact.
  */

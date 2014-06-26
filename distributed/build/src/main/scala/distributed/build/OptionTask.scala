@@ -6,7 +6,7 @@ import Creds.loadCreds
 import Logger.prepareLogMsg
 import distributed.project.model._
 import java.io.File
-import distributed.repo.core.{ LocalRepoHelper, Repository }
+import distributed.repo.core.{ LocalRepoHelper, Repository, RepoUser }
 import distributed.repo.core.sections._
 
 /**
@@ -64,7 +64,7 @@ abstract class OptionTask(log: Logger) {
   // partialOK == true  --> reload what you can
   def rematerialize(request: SeqSelectorElement, outcome: BuildOutcome, build: RepeatableDistributedBuild,
     dir: File, stage: String, msgGood: String, msgBad: String, partialOK: Boolean, log: Logger) = {
-    val cache = Repository.default
+    val cache = RepoUser.default
     val projectNames = build.builds.map { _.config.name }.toSet
     // let's expand ".":
     // flattenAndCheckProjectList() will check that the listed project names listed in the

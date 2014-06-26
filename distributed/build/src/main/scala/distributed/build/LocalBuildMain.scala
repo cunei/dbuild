@@ -43,7 +43,7 @@ class LocalBuildMain(repos: List[xsbti.Repository], options: BuildRunOptions) {
     mgr ! Props(new logging.SystemOutLoggerActor(options.debug))
     mgr
   }
-  val repository = Repository.default
+  val repository = RepoUser.default
   val logger = new logging.ActorLogger(logMgr)
   checkForObsoleteDirs(logger.warn _)
 

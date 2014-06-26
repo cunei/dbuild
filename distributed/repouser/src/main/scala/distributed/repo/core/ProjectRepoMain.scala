@@ -29,7 +29,7 @@ object ProjectRepoMain {
   import sections._
   // Removed the evil file-specific knowledge, which
   // will also allow to use this code to inspect remote repositories
-  val cache = Repository.default
+  val cache = RepoUser.default
 
   // TODO: integrate drepo as a subcommand "dbuild repo" in the main command line;
   // add an option to select which should be the cache to inspect;

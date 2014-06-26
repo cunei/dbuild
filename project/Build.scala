@@ -19,7 +19,7 @@ object DistributedBuilderBuild extends Build with BuildHelper {
   
   lazy val root = (
     Project("root", file(".")) 
-    aggregate(graph,hashing,logging,actorLogging,dprojects,dactorProjects,dcore,sbtSupportPlugin, dbuild, defaultSupport, gitSupport, drepo, dmeta, ddocs, dist, dindex)
+    aggregate(graph,hashing,logging,actorLogging,dprojects,dactorProjects,dcore,sbtSupportPlugin, dbuild, defaultSupport, gitSupport, drepouser, drepocore, dmeta, ddocs, dist, dindex)
     settings(publish := (), publishLocal := (), version := MyVersion)
     settings(CrossPlugin.crossBuildingSettings:_*)
     settings(CrossBuilding.crossSbtVersions := Seq("0.12","0.13"), selectScalaVersion)
@@ -33,7 +33,7 @@ object DistributedBuilderBuild extends Build with BuildHelper {
     settings(Packaging.settings:_*)
     settings(
       mappings in Universal <+= (target, sourceDirectory, scalaVersion in dbuild, version in dbuild) map Packaging.makeDbuildProps,
-      mappings in Universal <+= (target, sourceDirectory, scalaVersion in drepo, version in drepo) map Packaging.makeDRepoProps,
+      mappings in Universal <+= (target, sourceDirectory, scalaVersion in drepouser, version in drepouser) map Packaging.makeDRepoProps,
       version := MyVersion,
       selectScalaVersion,
       // disable the publication of artifacts in dist if 2.10
@@ -61,7 +61,7 @@ object DistributedBuilderBuild extends Build with BuildHelper {
 
   lazy val dmeta = (
       DmodProject("metadata")
-      dependsOn(graph, hashing, dindex)
+      dependsOn(graph, hashing, dindex, drepocore)
       dependsOnRemote(jacks, jackson, typesafeConfig, /*sbtCollections,*/ commonsLang)
     )
 
@@ -81,12 +81,12 @@ object DistributedBuilderBuild extends Build with BuildHelper {
   lazy val dcore = (
       DmodProject("core")
       dependsOnRemote(javaMail)
-      dependsOn(dmeta, graph, hashing, logging, drepo)
+      dependsOn(dmeta, graph, hashing, logging, drepouser)
       dependsOnSbt(sbtIo)
     )
   lazy val dprojects = (
       DmodProject("projects")
-      dependsOn(dcore, drepo, logging)
+      dependsOn(dcore, drepouser, logging)
       dependsOnRemote(javaMail, commonsIO)
       dependsOnSbt(sbtIo, sbtIvy)
     )
@@ -96,9 +96,15 @@ object DistributedBuilderBuild extends Build with BuildHelper {
       dependsOnSbt(sbtIo, sbtIvy)
       settings(skip210:_*)
     )
-  lazy val drepo = (
-    DmodProject("repo")
-    dependsOn(dmeta, logging)
+  lazy val drepocore = (
+    DmodProject("repocore")
+    dependsOn(logging)
+    dependsOnRemote(dispatch, commonsIO)
+    dependsOnSbt(sbtIo)
+  )
+  lazy val drepouser = (
+    DmodProject("repouser")
+    dependsOn(dmeta, logging, drepocore)
     dependsOnRemote(mvnAether, aetherWagon, dispatch, commonsIO)
     dependsOnSbt(sbtIo, sbtLaunchInt)
       settings(sourceGenerators in Compile <+= (sourceManaged in Compile, version, organization, scalaVersion, streams) map { (dir, version, org, sv, s) =>
@@ -118,8 +124,13 @@ object Defaults {
   )
   lazy val dbuild = (
       DmodProject("build")
+<<<<<<< HEAD
       dependsOn(dactorProjects, defaultSupport, gitSupport, drepo, dmeta)
       dependsOnRemote(aws, uriutil, dispatch, gpgLib, jsch, oro, scallop, commonsLang)
+=======
+      dependsOn(dactorProjects, defaultSupport, gitSupport, drepouser, dmeta)
+      dependsOnRemote(aws, uriutil, dispatch, gpgLib, jsch, oro, scallop)
+>>>>>>> Refactoring: split repocore and repouser
       dependsOnSbt(sbtLaunchInt, sbtLauncher)
       settings(skip210:_*)
     )
@@ -127,7 +138,7 @@ object Defaults {
   // Projects relating to supporting various tools in distributed builds.
   lazy val defaultSupport = (
       SupportProject("default") 
-      dependsOn(dcore, drepo, dmeta, dprojects)
+      dependsOn(dcore, drepouser, dmeta, dprojects)
       dependsOnRemote(mvnEmbedder, mvnWagon, javaMail)
       dependsOnSbt(sbtLaunchInt, sbtIvy)
       settings(SbtSupport.settings:_*)
@@ -135,7 +146,7 @@ object Defaults {
   // A separate support project for git/jgit
   lazy val gitSupport = (
       SupportProject("git") 
-      dependsOn(dcore, drepo, dmeta, dprojects, defaultSupport)
+      dependsOn(dcore, drepouser, dmeta, dprojects, defaultSupport)
       dependsOnRemote(mvnEmbedder, mvnWagon, javaMail, jgit)
       dependsOnSbt(sbtLaunchInt, sbtIvy)
       settings(SbtSupport.settings:_*)

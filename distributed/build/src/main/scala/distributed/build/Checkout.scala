@@ -1,7 +1,7 @@
 package distributed.build
 
 import java.io.File
-import distributed.repo.core.{ Repository, LocalRepoHelper }
+import distributed.repo.core.{ Repository, RepoUser, LocalRepoHelper }
 import distributed.project.model._
 import distributed.project.resolve.AggregateProjectResolver
 import distributed.logging.ConsoleLogger
@@ -31,7 +31,7 @@ object Checkout {
       sys.error("Using a directory name that is identical to the project name may confuse dbuild, due to an sbt restriction. Please use a different name.")
 
     // ok. First of all, we need to retrieve from the cache the build description, and the project
-    val cache = Repository.default
+    val cache = RepoUser.default
     val log = ConsoleLogger(debug)
     println("Please wait...") // reloading the metadata may take several seconds
     val buildMeta = LocalRepoHelper.readBuildMeta(buildKey, cache) getOrElse
