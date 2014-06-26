@@ -1,6 +1,4 @@
-package distributed
-package repo
-package core
+package distributed.repo.core
 
 import java.io.File
 import java.util.Date
@@ -12,8 +10,15 @@ import java.io.OutputStreamWriter
 import java.io.BufferedInputStream
 import java.util.zip.GZIPInputStream
 import java.util.zip.GZIPOutputStream
-import project.model._
+import distributed.project.model._
 import Utils.{ readValue, writeValue }
+
+/*
+ * This file is here since definitions like SavedConfiguration rely on the ability to
+ * create GetKeys, which need these factories in order to be built. Logically, it belongs
+ * with the utilities in d-repouser. GetKey.scala is in this package, in d-metadata, for
+ * the same reason.
+ */
 
 /**
  * In order to get a sha for a raw file/inputstream that contains an artifact,

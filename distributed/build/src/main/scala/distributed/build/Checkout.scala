@@ -14,6 +14,7 @@ import distributed.support.sbt.{ SbtRunner, SbtBuildConfig }
 import distributed.support.sbt.SbtRunner.SbtFileNames._
 import distributed.logging.Logger
 import java.io.PrintWriter
+import distributed.repo.core.GetBuild
 
 /**
  * Implementation of the "dbuild checkout" command. It will resolve and reconfigure an sbt project

@@ -24,7 +24,7 @@ import distributed.support.sbt.SbtRunner.{ sbtIvyCache, rewireInputFile, buildAr
 import distributed.support.sbt.{ RewireInput, GenerateArtifactsInput }
 import distributed.support.SbtUtil.{ pluginAttrs, fixAttrs }
 import distributed.project.model.SbtPluginAttrs
-import distributed.project.model.GetBuild
+import distributed.repo.core.GetBuild
 
 object DistributedRunner {
 

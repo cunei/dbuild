@@ -1,5 +1,6 @@
 package distributed.project.model
 import java.io.File
+import distributed.repo.core.GetRaw
 
 /**
  * This currently represents a "coordinate" of an artifact, the version you must

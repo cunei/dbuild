@@ -1,7 +1,14 @@
-package distributed.project.model
+package distributed.repo.core
 import java.io.InputStream
-import java.io.File
 import distributed.repo.core.GetKey
+import distributed.project.model.BuildArtifactsOut
+import distributed.project.model.ExtractedBuildMeta
+import distributed.project.model.RepeatableProjectBuild
+import distributed.project.model.SavedConfiguration
+
+// The GetKeys should never be created directly, as their content (in theory) may change.
+// Please use instead Repository.getKey(data), which will internally invoke the appropriate
+// constructor, via the factories defined in RepoSections.scala.
 
 /**
  * An access GetKey used to retrieve a raw artifact.
