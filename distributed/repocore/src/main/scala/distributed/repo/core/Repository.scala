@@ -42,14 +42,14 @@ import java.io.OutputStreamWriter
  * It is only ever be created by the put() call of Repository, and used by its get(),
  * but never created explicitly by user code.
  * Its content should be treated as opaque: just store it somewhere, and use it later to retrieve data.
- * 
+ *
  * Since GetKeys are in turn serialized/deserialized as part of metadata, their definition is in the
  * project d-metadata, although logically they belong next to the definition of Key and Repository.
- * 
+ *
  * The GetKeys should never be created directly, as their content (in theory) may change.
  * Please use instead Repository.getKey(data), which will internally invoke the appropriate
  * constructor, via the factories defined in RepoSections.scala.
- * 
+ *
  * When GetKeys need to be displayed, their toString will print some unique identififer (currently
  * the sha uuid). When they need to be passed to dbuild from the command line, they will be parsed
  * automatically by the Scallop library, using the converters defined in RepoSections.scala.
@@ -114,7 +114,7 @@ private[repo] case class Selector(section: String, index: String) {
 }
 object Selector {
   private val validChars = (('a' to 'z') ++ ('0' to '9')).toSet
-  def checkName(name:String) = {
+  def checkName(name: String) = {
     val lower = name.toLowerCase
     if (!(lower forall (c => validChars(c)))) {
       sys.error("Selector names can only contain letters and numbers. Unexpected: " + name)
@@ -142,7 +142,7 @@ abstract class ReadableRepository {
    * If DataType you received is an InputStream, you should close it once you are done with it.
    */
   /*
-   * Implementation trick: getKey presents itself as a one-argument function that is parametric on a single
+   * Implementation trick: get presents itself as a one-argument function that is parametric on a single
    * type parameter. In reality, get returns an instance of a class whose apply() will apply the single
    * parameter, returning the needed data. The advantage is that the type parameters KeySource and
    * Get are always inferred automatically, and it is only necessary to specify (when needed) the single type
@@ -185,7 +185,7 @@ abstract class ReadableRepository {
    * As a convenience method, you can use safe {...} to run code that should be synchronized during
    * access to the repository.
    */
-  def safe[A,B](f: => B): B = {
+  def safe[A, B](f: => B): B = {
     lock
     try {
       f
@@ -229,7 +229,7 @@ abstract class ReadableRepository {
    * to, and it may be a sign that something is seriously wrong. An attempt to double-lock by
    * the same thread should result in an exception, or at least in an evident deadlock that we
    * can debugged.
-   * 
+   *
    * Something equivalent to a semaphore with a count of 1 is probably the appropriate semantics.
    */
   protected[core] def lock: Unit
@@ -244,7 +244,7 @@ abstract class ReadableRepository {
    * and used by drepo to print additional information concerning the repository data. In particular,
    * the date may change as files are moved across cache levels, and sizes may be different depending
    * on the way each repository stores data.
-   * 
+   *
    * If you need reliable timestamp information, that is preserved across caching, you will need to
    * add a timestamp to the saved metadata. In particular, there will be one in each SavedConfiguration,
    * so that we can use them as roots for a garbage collection.
@@ -286,12 +286,12 @@ abstract class Repository extends ReadableRepository {
     safe {
       val uuid = keySource.uuid
       val get = section.newGet(uuid)
-      // short circuit evaluation, hence hasData is called only if not overwrite
-      if (!overwrite && hasData(section.selector(get))) {
-        val previous = fetch(section.selector(get)).get
-        // compare the two InputStreams
-        val same = IOUtils.contentEquals(section.dataToStream(data), previous)
-        if (!same) sys.error("Internal Repository Error: data already in the repository does not match. Please report")
+      if (!overwrite) {
+        fetch(section.selector(get)) foreach { previous => // was there data?
+          // compare the two InputStreams
+          val same = IOUtils.contentEquals(section.dataToStream(data), previous)
+          if (!same) sys.error("Internal Repository Error: data already in the repository does not match. Please report")
+        }
       }
       val out = section.dataToStream(data)
       store(out, section.selector(get))
@@ -376,12 +376,12 @@ abstract class Repository extends ReadableRepository {
    * in order to preserve the repository integrity.
    *
    * Returns true if the file was deleted, false otherwise.
-   * 
+   *
    * If the repository acts as a proxy for some other repository, then
    * delete the local copy first, then the remote copy as well.
    * If the repository is a cache, which should be locally cleaned in order to keep
-   * it under a certain size for example, then use uncache(), below. 
-   * 
+   * it under a certain size for example, then use uncache(), below.
+   *
    */
   // TODO: do we need this? Or is it just unnecessary added complexity, at this time?
   protected[core] def delete(selector: Selector): Boolean
