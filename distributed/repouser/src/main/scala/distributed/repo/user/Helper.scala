@@ -1,19 +1,18 @@
-package distributed
-package repo
-package core
+package distributed.repo.user
 
-import project.model._
+import distributed.project.model._
 import java.io.File
 import sbt.{ RichFile, IO, Path }
 import Path._
 import distributed.project.model.Utils.{ writeValue, readValue }
 import distributed.project.model.{ ArtifactLocation, BuildArtifactsIn }
-import logging.Logger
+import distributed.logging.Logger
 import java.io.InputStream
 import java.io.OutputStream
 import java.io.FileOutputStream
 import sections._
 import org.apache.commons.io.IOUtils
+import distributed.repo.core.{ Repository, ReadableRepository }
 
 object LocalRepoHelper {
 

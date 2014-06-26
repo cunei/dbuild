@@ -112,7 +112,7 @@ object DistributedBuilderBuild extends Build with BuildHelper {
         if(!dir.isDirectory) dir.mkdirs()
         s.log.info("Generating \"Defaults.scala\" for sbt "+sbtVer(sv)+" and Scala "+sv)
         IO.write(file, """
-package distributed.repo.core
+package distributed.repo.user
 
 object Defaults {
   val version = "%s"

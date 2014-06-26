@@ -11,7 +11,6 @@ import com.fasterxml.jackson.databind.JsonMappingException
 import java.io.File
 import java.io.InputStreamReader
 import java.io.InputStream
-import java.util.zip.GZIPInputStream
 import java.io.BufferedInputStream
 import java.io.FileInputStream
 

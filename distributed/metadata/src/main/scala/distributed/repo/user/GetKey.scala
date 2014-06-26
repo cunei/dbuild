@@ -1,4 +1,4 @@
-package distributed.repo.core
+package distributed.repo.user
 import java.io.InputStream
 import distributed.repo.core.GetKey
 import distributed.project.model.BuildArtifactsOut
@@ -13,7 +13,7 @@ import distributed.project.model.SavedConfiguration
 /**
  * An access GetKey used to retrieve a raw artifact.
  */
-case class GetRaw(private[core] uuid: String) extends GetKey[InputStream]
+case class GetRaw(private[repo] uuid: String) extends GetKey[InputStream]
 /**
  * A GetMeta is a kind of GetKey used to access JSON-serializable metadata.
  * We define streamToData() here for all such metadata classes; since the serialized
@@ -22,9 +22,9 @@ case class GetRaw(private[core] uuid: String) extends GetKey[InputStream]
  * Concrete subclasses of GetMeta are used for project descriptions, extraction metadata, etc.
  */
 abstract class GetMeta[DataType] extends GetKey[DataType]
-case class GetProject(private[core] uuid: String) extends GetMeta[RepeatableProjectBuild]
-case class GetBuild(private[core] uuid: String) extends GetMeta[SavedConfiguration]
-case class GetExtract(private[core] uuid: String) extends GetMeta[ExtractedBuildMeta]
+case class GetProject(private[repo] uuid: String) extends GetMeta[RepeatableProjectBuild]
+case class GetBuild(private[repo] uuid: String) extends GetMeta[SavedConfiguration]
+case class GetExtract(private[repo] uuid: String) extends GetMeta[ExtractedBuildMeta]
 
 // Note: this may also be:
 //case class GetArtifacts(proj: GetProject) extends GetMeta[BuildArtifactsOut] {
@@ -41,4 +41,4 @@ case class GetExtract(private[core] uuid: String) extends GetMeta[ExtractedBuild
 //   using the key from GetProject to publish, obtaining a GetArtifacts (or not)
 // The GetArtifacts get discarded; we can start again from the GetProject in order
 // to generate new GetArtifacts as needed.
-case class GetArtifacts(private[core] uuid: String) extends GetMeta[BuildArtifactsOut]
+case class GetArtifacts(private[repo] uuid: String) extends GetMeta[BuildArtifactsOut]

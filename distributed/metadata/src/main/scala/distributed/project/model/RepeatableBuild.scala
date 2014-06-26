@@ -3,8 +3,8 @@ package distributed.project.model
 import Utils.{ writeValue, canSeeSpace }
 import com.fasterxml.jackson.annotation.JsonProperty
 import distributed.repo.core.Repository
-import distributed.repo.core.GetProject
-import distributed.repo.core.sections._
+import distributed.repo.user.GetProject
+import distributed.repo.user.sections._
 
 /**
  * Information on how to build a project.  Consists of both distributed build

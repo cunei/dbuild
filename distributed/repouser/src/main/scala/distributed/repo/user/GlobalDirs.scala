@@ -1,4 +1,4 @@
-package distributed.repo.core
+package distributed.repo.user
 
 import distributed.project.model._
 import java.io.File

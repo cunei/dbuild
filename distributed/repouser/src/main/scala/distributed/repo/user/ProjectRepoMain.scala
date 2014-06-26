@@ -1,13 +1,12 @@
-package distributed
-package repo
-package core
+package distributed.repo.user
 
-import project.model._
+import distributed.project.model._
 import LocalRepoHelper.ResolutionResult
 import java.io.File
 import sbt.{ RichFile, IO, Path }
 import Path._
 import distributed.project.model.Utils.writeValue
+import distributed.repo.core.Repository
 
 /** Expose for SBT launcher support. */
 class SbtRepoMain extends xsbti.AppMain {

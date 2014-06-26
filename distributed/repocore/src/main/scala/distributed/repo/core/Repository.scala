@@ -58,7 +58,7 @@ import java.io.OutputStreamWriter
  * project d-metadata, although logically they belong next to the definition of Key and Repository.
  */
 abstract class GetKey[DataType] extends {
-  private[core] def uuid: String
+  private[repo] def uuid: String
   override def toString: String = uuid
 }
 
@@ -82,35 +82,35 @@ abstract class GetKey[DataType] extends {
  * The Sections themselves need to be public, as they are used as implicit parameters by put() and get().
  */
 abstract class Section[DataType, KeySource <: { def uuid: String }, Get <: GetKey[DataType]] {
-  private[core] def newGet(uuid: String): Get
-  private[core] def dataToStream(d: DataType)(implicit m: Manifest[DataType]): InputStream
-  private[core] def streamToData(is: InputStream)(implicit m: Manifest[DataType]): DataType
+  private[repo] def newGet(uuid: String): Get
+  private[repo] def dataToStream(d: DataType)(implicit m: Manifest[DataType]): InputStream
+  private[repo] def streamToData(is: InputStream)(implicit m: Manifest[DataType]): DataType
   /*
  * Selector-related utils
  */
   /**
    * From higher level (typed) to lower level (untyped)
    */
-  private[core] def selector(get: GetKey[DataType]) = Selector(name, get.uuid)
+  private[repo] def selector(get: GetKey[DataType]) = Selector(name, get.uuid)
   /**
    * Given a low-level Selector to an element, recreates the
    * corresponding high-level GetKey. This call is used in scan(),
    * in order to generate the list of GetKeys, given the list of
    * low-level Selectors.
    */
-  private[core] def getFromSelector(selector: Selector) = newGet(selector.index)
+  private[repo] def getFromSelector(selector: Selector) = newGet(selector.index)
   /**
    * The name of the section. It is also used when calling scan() (the low-level
    * equivalent to enumerate() in the implementation of a Repository.
    */
-  private[core] def name: String
+  private[repo] def name: String
 }
 
 /**
  * A Selector is a unique reference to an actual piece of data saved to a repository (at the lower,
  * type-unsafe conceptual level). Selectors (and Sections) are never serialized/deserialized.
  */
-private[core] case class Selector(section: String, index: String) {
+private[repo] case class Selector(section: String, index: String) {
   import Selector.checkName
   checkName(section)
   checkName(index)
@@ -161,7 +161,7 @@ abstract class ReadableRepository {
     }
   }
   /** see getKey in the companion object. */
-  final /*private[core]*/ def getKey[DataType] = Repository.getKey[DataType]
+  final /*private[repo]*/ def getKey[DataType] = Repository.getKey[DataType]
   /**
    * Retrieves the space concretely taken in the repository to store
    * the data indexed by this key. Returns None if key not present.
@@ -252,14 +252,14 @@ abstract class ReadableRepository {
    * add a timestamp to the saved metadata. In particular, there will be one in each SavedConfiguration,
    * so that we can use them as roots for a garbage collection.
    */
-  private[core] def date(selector: Selector): Option[Date]
+  private[repo] def date(selector: Selector): Option[Date]
   /**
    * Return, if known, the actual space occupied in the Repository by the data stored
    * under Selector. If no data, or if the repo is unable to supply the information,
    * return None.
    * @see See the comment on date() for more information.
    */
-  private[core] def size(selector: Selector): Option[Long]
+  private[repo] def size(selector: Selector): Option[Long]
 }
 
 /**
@@ -403,9 +403,9 @@ object Repository {
    * data. That is not recommended, as storing somewhere a GetKey that has no associated data in the
    * repository is the equivalent of creating a dangling reference. Use the GetKeys returned by a put(), instead.
    * If the same KeySource type is used for multiple DataTypes, you may have to supply the DataType type parameter explicitly.
-   * Note: this should ideally be a private[core] def, once all the code that uses it has been properly refactored.
+   * Note: this should ideally be a private[repo] def, once all the code that uses it has been properly refactored.
    */
-  final /*private[core]*/ def getKey[DataType] = new {
+  final def getKey[DataType] = new {
     def apply[KeySource <: { def uuid: String }, Get <: GetKey[DataType]](source: KeySource)(implicit section: Section[DataType, KeySource, Get], m: Manifest[KeySource]): Get =
       section.newGet(source.uuid)
   }

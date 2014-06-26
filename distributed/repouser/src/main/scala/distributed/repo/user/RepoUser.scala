@@ -1,8 +1,9 @@
-package distributed
-package repo
-package core
+package distributed.repo.user
 
 import java.io.File
+import distributed.repo.core.{Repository,ReadableRepository,Credentials}
+
+import distributed.repo.core.LocalRepository;
 
 object RepoUser {
   def default: Repository = {
