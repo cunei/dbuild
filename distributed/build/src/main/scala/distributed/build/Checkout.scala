@@ -22,9 +22,8 @@ import distributed.repo.user.{ GetBuild, RepoUser, LocalRepoHelper }
  * This is an sbt-specific functionality, which replaces the previous "dbuild-setup" plugin command.
  */
 object Checkout {
-  def dbuildCheckout(uuidString: String, projectName: String, path: String, debug: Boolean,
+  def dbuildCheckout(buildKey: GetBuild, projectName: String, path: String, debug: Boolean,
       useLocalResolvers: Boolean, localRepos: List[xsbti.Repository]) = {
-    val buildKey = GetBuild(uuidString)  // NOTA BENE: This bit bypasses the interface of GetKey, which should normally be opaque
     val dir = (new File(path)).getCanonicalFile
     if (dir.exists)
       sys.error("The path \"" + path + "\" already exists. Please move it aside, or use a different name.")

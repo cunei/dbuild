@@ -37,25 +37,22 @@ import java.io.OutputStreamWriter
  * The same index used in different sections refers to two different pieces of data.
  */
 
-////////////////////
-/*
- * A GetKey is a generic, but type-safe, way to access some data stored in a repository.
- * It is only ever be created by the put() call of Repository, and used by its get(),
- * but never created explicitly by any other user code.
- * Its content should be treated as opaque: just store it somewhere, and use it later to retrieve data.
- * 
- * Since GetKeys are in turn serialized/deserialized as part of metadata, their definition is in the
- * metadata project, although logically they belong next to the definition of Key and Repository.
- */
-
 /**
  * A GetKey is a generic, but type-safe, way to access some data stored in a repository.
  * It is only ever be created by the put() call of Repository, and used by its get(),
- * but never created explicitly by any other user code.
+ * but never created explicitly by user code.
  * Its content should be treated as opaque: just store it somewhere, and use it later to retrieve data.
  * 
  * Since GetKeys are in turn serialized/deserialized as part of metadata, their definition is in the
  * project d-metadata, although logically they belong next to the definition of Key and Repository.
+ * 
+ * The GetKeys should never be created directly, as their content (in theory) may change.
+ * Please use instead Repository.getKey(data), which will internally invoke the appropriate
+ * constructor, via the factories defined in RepoSections.scala.
+ * 
+ * When GetKeys need to be displayed, their toString will print some unique identififer (currently
+ * the sha uuid). When they need to be passed to dbuild from the command line, they will be parsed
+ * automatically by the Scallop library, using the converters defined in RepoSections.scala.
  */
 abstract class GetKey[DataType] extends {
   private[repo] def uuid: String

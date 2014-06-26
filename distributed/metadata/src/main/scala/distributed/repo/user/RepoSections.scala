@@ -31,7 +31,13 @@ case class RawUUID(f: File) {
 }
 
 /**
- * Use "import sections._" in client code, to bring the implicit repository Keys into scope.
+ * Use "import sections._" in client code, to bring the implicit Sections into scope:
+ * that will allow your code to use type safe r.get() and r.put() calls, without any fuss.
+ * See usage examples in RepositoryCompilationTest, below.
+ * 
+ * All the knowledge about extracting and using keys and about converting metadata and other
+ * data into repository format and vice versa, is contained in this file (as well as in
+ * the implementations of GetKey found in GetKey.scala).
  */
 package object sections {
   implicit object RawSection extends Section[InputStream, RawUUID, GetRaw] {
@@ -80,12 +86,18 @@ package object sections {
     private[repo] def newGet(uuid: String) = GetExtract(uuid)
   }
 }
+package object scallop {  // For Scallop parsing
+  import org.rogach.scallop._
+  import sections._
+  implicit val getProjectConverter = singleArgConverter[GetProject](uuid => ProjectSection.newGet(uuid))
+  implicit val getBuildConverter = singleArgConverter[GetBuild](uuid => BuildSection.newGet(uuid))
+}
 
 // in client code use:
 // import distributed.repo.core.Repository
-// import distributed.repo.core.sections._
+// import distributed.repo.user.sections._
 
-// This is technically dead code, but it is useful to leave it in an compile it with
+// The code below is technically dead code, but it is useful to leave it in and compile it with
 // the rest, in order to make sure that all its test calls compile successfully.
 // Please leave this code where it is.
 private object RepositoryCompilationTest {

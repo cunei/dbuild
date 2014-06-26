@@ -22,6 +22,8 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.TimeZone
 import collection.JavaConverters._
+import distributed.repo.user.scallop._
+import distributed.repo.user.GetBuild
 
 /**
  * These options are created by SbtBuildMain, and are propagated to most stages of building, as
@@ -97,7 +99,7 @@ class SbtBuildMain extends xsbti.AppMain {
                  |build, preparing sbt for a debugging session.
                  |Options:
                  |""".stripMargin)
-        val uuid = trailArg[String](descr = "UUID of the build")
+        val uuid = trailArg[GetBuild](descr = "UUID of the build")
         val project = trailArg[String](descr = "name of the project")
         val path = trailArg[String](descr = "path into which the source will be checked out")
       }

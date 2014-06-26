@@ -62,7 +62,7 @@ object DistributedBuilderBuild extends Build with BuildHelper {
   lazy val dmeta = (
       DmodProject("metadata")
       dependsOn(graph, hashing, dindex, drepocore)
-      dependsOnRemote(jacks, jackson, typesafeConfig, /*sbtCollections,*/ commonsLang)
+      dependsOnRemote(jacks, jackson, typesafeConfig, /*sbtCollections,*/ commonsLang, scallop)
     )
 
   // Projects relating to distributed builds.
@@ -124,13 +124,8 @@ object Defaults {
   )
   lazy val dbuild = (
       DmodProject("build")
-<<<<<<< HEAD
-      dependsOn(dactorProjects, defaultSupport, gitSupport, drepo, dmeta)
-      dependsOnRemote(aws, uriutil, dispatch, gpgLib, jsch, oro, scallop, commonsLang)
-=======
       dependsOn(dactorProjects, defaultSupport, gitSupport, drepouser, dmeta)
-      dependsOnRemote(aws, uriutil, dispatch, gpgLib, jsch, oro, scallop)
->>>>>>> Refactoring: split repocore and repouser
+      dependsOnRemote(aws, uriutil, dispatch, gpgLib, jsch, oro, scallop, commonsLang)
       dependsOnSbt(sbtLaunchInt, sbtLauncher)
       settings(skip210:_*)
     )
