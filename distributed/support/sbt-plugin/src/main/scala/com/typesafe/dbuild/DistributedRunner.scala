@@ -624,7 +624,6 @@ object DistributedRunner {
   }
 
   def loadBuildArtifacts(localRepos: Seq /*Levels*/ [File], builduuid: GetBuild, thisProject: String, log: Logger, debug: Boolean) = {
-    import distributed.repo.core._
     val cache = RepoUser.default
     val project = findRepeatableProjectBuild(builduuid, thisProject, log)
     log.info("Retrieving dependencies for " + project.uuid + " " + project.config.name)
@@ -635,7 +634,6 @@ object DistributedRunner {
   }
 
   def findRepeatableProjectBuild(builduuid: GetBuild, thisProject: String, log: Logger) = {
-    import distributed.repo.core._
     log.info("Finding information for project " + thisProject + " in build " + builduuid)
     val cache = RepoUser.default
     val projects = (for {
