@@ -13,7 +13,7 @@ import distributed.support.NameFixer.fixName
 import java.io.File
 import distributed.repo.core.LocalArtifactMissingException
 import org.apache.ivy.core.module.id.ModuleRevisionId
-import distributed.repo.core.LocalRepoHelper
+import distributed.repo.user.LocalRepoHelper
 import distributed.project.model.ArtifactsOut
 import distributed.project.model.SubArtifactsOut
 import distributed.project.model.SavedConfiguration
@@ -24,7 +24,7 @@ import distributed.support.sbt.SbtRunner.{ sbtIvyCache, rewireInputFile, buildAr
 import distributed.support.sbt.{ RewireInput, GenerateArtifactsInput }
 import distributed.support.SbtUtil.{ pluginAttrs, fixAttrs }
 import distributed.project.model.SbtPluginAttrs
-import distributed.repo.core.GetBuild
+import distributed.repo.user.{GetBuild,RepoUser}
 
 object DistributedRunner {
 

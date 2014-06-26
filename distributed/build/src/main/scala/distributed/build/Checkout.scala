@@ -1,7 +1,7 @@
 package distributed.build
 
 import java.io.File
-import distributed.repo.core.{ Repository, RepoUser, LocalRepoHelper }
+import distributed.repo.core.Repository
 import distributed.project.model._
 import distributed.project.resolve.AggregateProjectResolver
 import distributed.logging.ConsoleLogger
@@ -14,7 +14,7 @@ import distributed.support.sbt.{ SbtRunner, SbtBuildConfig }
 import distributed.support.sbt.SbtRunner.SbtFileNames._
 import distributed.logging.Logger
 import java.io.PrintWriter
-import distributed.repo.core.GetBuild
+import distributed.repo.user.{ GetBuild, RepoUser, LocalRepoHelper }
 
 /**
  * Implementation of the "dbuild checkout" command. It will resolve and reconfigure an sbt project

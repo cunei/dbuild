@@ -1,6 +1,6 @@
 package distributed.project.build
 import java.io.File
-import distributed.repo.core.GlobalDirs.buildDir
+import distributed.repo.user.GlobalDirs.buildDir
 import sbt.Path._
 
 /**

@@ -12,7 +12,7 @@ import java.io.OutputStream
 import java.io.FileOutputStream
 import sections._
 import org.apache.commons.io.IOUtils
-import distributed.repo.core.{ Repository, ReadableRepository }
+import distributed.repo.core.{ Repository, ReadableRepository, ResolveException }
 
 object LocalRepoHelper {
 
@@ -153,7 +153,7 @@ object LocalRepoHelper {
     val fetch = if (subprojs.isEmpty) metadata.versions.results.map { _.subName } else {
       val unknown = subprojs.diff(metadata.versions.results.map { _.subName })
       if (unknown.nonEmpty) {
-        sys.error(unknown.mkString("The following subprojects are unknown: ", ", ", ""))
+        throw new ResolveException(unknown.mkString("The following subprojects are unknown: ", ", ", ""))
       }
       subprojs
     }

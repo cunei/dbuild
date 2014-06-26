@@ -14,7 +14,8 @@ import distributed.project.dependencies.Extractor
 import distributed.support.BuildSystemCore
 import akka.pattern.ask
 import akka.util.duration._
-import distributed.repo.core.GlobalDirs.checkForObsoleteDirs
+import distributed.repo.user.GlobalDirs.checkForObsoleteDirs
+import distributed.repo.user.{GlobalDirs, RepoUser}
 
 class LocalBuildMain(repos: List[xsbti.Repository], options: BuildRunOptions) {
 

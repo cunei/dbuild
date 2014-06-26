@@ -8,12 +8,11 @@ import akka.actor.{ ActorRef, Actor, Props, PoisonPill, Terminated }
 import distributed.project.resolve.ProjectResolver
 import actorpatterns.forwardingErrorsToFutures
 import java.io.File
-import distributed.repo.core._
 import sbt.IO
 import distributed.project.controller.{ Controller, Controlled, Done }
 import distributed.project.cleanup.Recycling._
 import sbt.Path._
-import distributed.repo.core.GlobalDirs.buildDir
+import distributed.repo.user.GlobalDirs.buildDir
 
 case class RunBuild(build: RepeatableProjectBuild, outProjects: Seq[Project], children: Seq[BuildOutcome], buildData: BuildData)
 

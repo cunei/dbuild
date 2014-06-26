@@ -5,6 +5,7 @@ import sbt._
 import Path._
 import project.model._
 import repo.core._
+import repo.user.GlobalDirs
 import java.io.File
 import java.net.URI
 import com.amazonaws.services.s3.AmazonS3Client

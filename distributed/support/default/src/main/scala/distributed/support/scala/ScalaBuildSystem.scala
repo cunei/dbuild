@@ -11,7 +11,7 @@ import _root_.sbt.IO
 import _root_.sbt.IO.relativize
 import logging.Logger
 import sys.process._
-import distributed.repo.core.LocalRepoHelper
+import distributed.repo.user.LocalRepoHelper
 import distributed.project.model.Utils.{ writeValue, readValue }
 import distributed.project.dependencies.Extractor
 import distributed.project.build.LocalBuildRunner

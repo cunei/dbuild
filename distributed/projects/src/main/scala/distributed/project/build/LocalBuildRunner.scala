@@ -7,7 +7,8 @@ import logging.Logger
 import distributed.project.resolve.ProjectResolver
 import Logger.prepareLogMsg
 import java.io.File
-import distributed.repo.core._
+import distributed.repo.user.LocalRepoHelper
+import distributed.repo.core.{Repository, RepositoryException}
 import sbt.Path._
 import dependencies.Extractor
 import distributed.project.cleanup.Recycling.{ updateTimeStamp, markSuccess }

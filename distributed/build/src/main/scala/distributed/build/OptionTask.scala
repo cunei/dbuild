@@ -6,8 +6,9 @@ import Creds.loadCreds
 import Logger.prepareLogMsg
 import distributed.project.model._
 import java.io.File
-import distributed.repo.core.{ LocalRepoHelper, Repository, RepoUser }
-import distributed.repo.core.sections._
+import distributed.repo.core.Repository
+import distributed.repo.user.{ LocalRepoHelper, RepoUser }
+import distributed.repo.user.sections._
 
 /**
  * Defines a task that will run before or after the build, defined somewhere

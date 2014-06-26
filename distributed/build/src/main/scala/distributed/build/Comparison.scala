@@ -5,7 +5,8 @@ import sbt._
 import Path._
 import project.model._
 import java.io.File
-import distributed.repo.core.{ LocalRepoHelper, Repository }
+import distributed.repo.user.LocalRepoHelper
+import distributed.repo.core.Repository
 import org.apache.commons.io.{ FileUtils, IOUtils }
 import collection.JavaConversions._
 import java.util.jar.JarInputStream

@@ -7,7 +7,7 @@ import sbt.Path._
 import sbt.IO.relativize
 import distributed.logging.Logger
 import sys.process._
-import distributed.repo.core.LocalRepoHelper
+import distributed.repo.user.LocalRepoHelper
 import distributed.project.model.Utils.readValue
 import xsbti.Predefined._
 import org.apache.ivy

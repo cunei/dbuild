@@ -14,7 +14,7 @@ import com.typesafe.config.ConfigValueFactory
 import distributed.project.model.Utils.readValueT
 import distributed.utils.Time.timed
 import collection.immutable.SortedMap
-import distributed.repo.core.Defaults
+import distributed.repo.user.Defaults
 import com.typesafe.config.{ ConfigSyntax, ConfigFactory, ConfigParseOptions }
 import org.rogach.scallop._
 import org.rogach.scallop.exceptions.ScallopException

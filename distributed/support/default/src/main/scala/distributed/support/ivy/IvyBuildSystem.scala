@@ -9,7 +9,7 @@ import sbt.Path._
 import sbt.IO
 import distributed.logging.Logger
 import sys.process._
-import distributed.repo.core.LocalRepoHelper
+import distributed.repo.user.LocalRepoHelper
 import distributed.project.model.Utils.readValue
 import xsbti.Predefined._
 import org.apache.ivy
@@ -27,7 +27,7 @@ import org.apache.ivy.core.module.descriptor.DefaultArtifact
 import distributed.support.ivy.IvyMachinery.PublishIvyInfo
 import distributed.project.dependencies.Extractor
 import distributed.project.build.LocalBuildRunner
-import distributed.repo.core.GlobalDirs.dbuildHomeDir
+import distributed.repo.user.GlobalDirs.dbuildHomeDir
 import distributed.support.SbtUtil.pluginAttrs
 
 /** Implementation of the Scala  build system. workingDir is the "target" general dbuild dir */

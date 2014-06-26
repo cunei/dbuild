@@ -9,7 +9,7 @@ import _root_.java.io.File
 import sbt.Path._
 import distributed.project.controller.{ Controller, Controlled, Done }
 import dependencies.ExtractionDirs.projectExtractionDir
-import distributed.repo.core.GlobalDirs.extractionDir
+import distributed.repo.user.GlobalDirs.extractionDir
 import distributed.project.model.CleanupExpirations
 import distributed.project.cleanup.Recycling._
 import sbt.{ IO, DirectoryFilter }

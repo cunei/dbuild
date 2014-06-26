@@ -6,7 +6,7 @@ import Path._
 import _root_.distributed.logging.Logger
 import sys.process._
 import distributed.project.model.ExtraConfig
-import distributed.repo.core.Defaults
+import distributed.repo.user.Defaults
 import org.apache.commons.io.FileUtils.readFileToString
 import distributed.project.model.Utils.{ readValue, writeValue }
 import org.apache.commons.io.FileUtils.writeStringToFile

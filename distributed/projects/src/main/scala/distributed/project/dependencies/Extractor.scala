@@ -10,7 +10,7 @@ import model.{ ProjectConfigAndExtracted, ProjectBuildConfig, ExtractedBuildMeta
 import model.{ ExtractionOK, ExtractionOutcome, ExtractionFailed, ExtractionConfig, DepsModifiers }
 import logging._
 import distributed.repo.core.Repository
-import distributed.repo.core.sections._
+import distributed.repo.user.sections._
 import distributed.project.model.Utils.{ writeValue, readValue }
 import distributed.logging.Logger.prepareLogMsg
 import org.apache.ivy.core.module.id.ModuleId

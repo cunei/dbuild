@@ -3,7 +3,7 @@ package build
 
 import project.model._
 import project.build._
-import repo.core.{ Repository, LocalRepoHelper }
+import repo.core.Repository
 import project.dependencies.ExtractBuildDependencies
 import support.BuildSystemCore
 import project.{ BuildSystem, BuildData }
@@ -16,7 +16,7 @@ import akka.util.Timeout
 import actorpatterns.forwardingErrorsToFutures
 import sbt.Path._
 import java.io.File
-import distributed.repo.core.GlobalDirs
+import distributed.repo.user.{ GlobalDirs,LocalRepoHelper }
 import org.apache.maven.execution.BuildFailure
 import Logger.prepareLogMsg
 
