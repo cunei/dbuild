@@ -19,6 +19,7 @@ import java.io.File
 import distributed.repo.user.{ GlobalDirs,LocalRepoHelper }
 import org.apache.maven.execution.BuildFailure
 import Logger.prepareLogMsg
+import distributed.repo.user.GetBuild
 
 case class RunDistributedBuild(conf: DBuildConfiguration, confName: String,
   buildTarget: Option[String], logger: Logger, options: BuildRunOptions)
@@ -165,7 +166,7 @@ class SimpleBuildActor(extractor: ActorRef, builder: ActorRef, repository: Repos
                 val expandedDBuildConfig = DBuildConfiguration(Seq(fullBuild.repeatableBuildConfig), generalOptions)
                 val fullLogger = log.newNestedLogger(expandedDBuildConfig.uuid)
                 writeDependencies(fullBuild, fullLogger)
-                nest(publishFullBuild(SavedConfiguration(expandedDBuildConfig, fullBuild), fullLogger)) { unit =>
+                nest(publishFullBuild(SavedConfiguration(expandedDBuildConfig, fullBuild), fullLogger)) { buildKey =>
                   // are we building a specific target? If so, filter the graph
                   val targetGraph = filterGraph(buildTarget, fullBuild)
                   val findBuild = fullBuild.buildMap
@@ -204,7 +205,7 @@ class SimpleBuildActor(extractor: ActorRef, builder: ActorRef, repository: Repos
    * Publishing the full build to the repository and logs the output for
    * re-use.
    */
-  def publishFullBuild(saved: SavedConfiguration, log: Logger): Unit = {
+  def publishFullBuild(saved: SavedConfiguration, log: Logger): GetBuild = {
     log.info("---== Writing dbuild Metadata ===---")
     val buildKey = LocalRepoHelper.publishBuildMeta(saved, repository, log)
     log.info("---== End Writing dbuild Metadata ===---")
@@ -215,6 +216,7 @@ class SimpleBuildActor(extractor: ActorRef, builder: ActorRef, repository: Repos
       Utils.writeValueFormatted(saved.expandedDBuildConfig))
     log.info("---== End Repeatable dbuild Configuration ===---")
     log.info("---==  End Repeatable Build Info ==---")
+    buildKey
   }
 
   def writeDependencies(build: RepeatableDistributedBuild, log: Logger) = {
