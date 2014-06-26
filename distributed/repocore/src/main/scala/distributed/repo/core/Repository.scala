@@ -58,7 +58,7 @@ import java.io.OutputStreamWriter
  * project d-metadata, although logically they belong next to the definition of Key and Repository.
  */
 abstract class GetKey[DataType] extends {
-  def uuid: String
+  private[core] def uuid: String
   override def toString: String = uuid
 }
 
@@ -82,28 +82,28 @@ abstract class GetKey[DataType] extends {
  * The Sections themselves need to be public, as they are used as implicit parameters by put() and get().
  */
 abstract class Section[DataType, KeySource <: { def uuid: String }, Get <: GetKey[DataType]] {
-  def newGet(uuid: String): Get
-  def dataToStream(d: DataType)(implicit m: Manifest[DataType]): InputStream
-  def streamToData(is: InputStream)(implicit m: Manifest[DataType]): DataType
+  private[core] def newGet(uuid: String): Get
+  private[core] def dataToStream(d: DataType)(implicit m: Manifest[DataType]): InputStream
+  private[core] def streamToData(is: InputStream)(implicit m: Manifest[DataType]): DataType
   /*
  * Selector-related utils
  */
   /**
    * From higher level (typed) to lower level (untyped)
    */
-  def selector(get: GetKey[DataType]) = Selector(name, get.uuid)
+  private[core] def selector(get: GetKey[DataType]) = Selector(name, get.uuid)
   /**
    * Given a low-level Selector to an element, recreates the
    * corresponding high-level GetKey. This call is used in scan(),
    * in order to generate the list of GetKeys, given the list of
    * low-level Selectors.
    */
-  def getFromSelector(selector: Selector) = newGet(selector.index)
+  private[core] def getFromSelector(selector: Selector) = newGet(selector.index)
   /**
    * The name of the section. It is also used when calling scan() (the low-level
    * equivalent to enumerate() in the implementation of a Repository.
    */
-  def name: String
+  private[core] def name: String
 }
 
 /**

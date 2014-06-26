@@ -33,10 +33,10 @@ case class RawUUID(f: File) {
  */
 package object sections {
   implicit object RawSection extends Section[InputStream, RawUUID, GetRaw] {
-    val name = "artifactFiles"
-    def newGet(uuid: String) = GetRaw(uuid)
-    def dataToStream(d: InputStream)(implicit m: Manifest[InputStream]): InputStream = d
-    def streamToData(is: InputStream)(implicit m: Manifest[InputStream]) = is
+    private[core] val name = "artifactFiles"
+    private[core] def newGet(uuid: String) = GetRaw(uuid)
+    private[core] def dataToStream(d: InputStream)(implicit m: Manifest[InputStream]): InputStream = d
+    private[core] def streamToData(is: InputStream)(implicit m: Manifest[InputStream]) = is
   }
   /**
    * MetaSection groups the sections used to access JSON-serializable metadata.
@@ -46,9 +46,9 @@ package object sections {
    */
   private[sections] sealed abstract class MetaSection[DataType, KeySource <: { def uuid: String }, Get <: GetKey[DataType]]
     extends Section[DataType, KeySource, Get] {
-    def streamToData(is: InputStream)(implicit m: Manifest[DataType]): DataType =
+    private[core] def streamToData(is: InputStream)(implicit m: Manifest[DataType]): DataType =
       readValue[DataType](new GZIPInputStream(new BufferedInputStream(is))) // GZIPInputStream will decompress
-    def dataToStream(d: DataType)(implicit m: Manifest[DataType]): InputStream = {
+    private[core] def dataToStream(d: DataType)(implicit m: Manifest[DataType]): InputStream = {
       val asString = writeValue(d)
       val asBytes = asString.getBytes()
       // As an alternative, one could conceivably use Piped streams, but
@@ -62,20 +62,20 @@ package object sections {
     }
   }
   implicit object ProjectSection extends MetaSection[RepeatableProjectBuild, RepeatableProjectBuild, GetProject] {
-    val name = "projects"
-    def newGet(uuid: String) = GetProject(uuid)
+    private[core] val name = "projects"
+    private[core] def newGet(uuid: String) = GetProject(uuid)
   }
   implicit object BuildSection extends MetaSection[SavedConfiguration, SavedConfiguration, GetBuild] {
-    val name = "fullBuilds"
-    def newGet(uuid: String) = GetBuild(uuid)
+    private[core] val name = "fullBuilds"
+    private[core] def newGet(uuid: String) = GetBuild(uuid)
   }
   implicit object ArtifactsSection extends MetaSection[BuildArtifactsOut, RepeatableProjectBuild, GetArtifacts] {
-    val name = "artifactsData"
-    def newGet(uuid: String) = GetArtifacts(uuid)
+    private[core] val name = "artifactsData"
+    private[core] def newGet(uuid: String) = GetArtifacts(uuid)
   }
   implicit object ExtractSection extends MetaSection[ExtractedBuildMeta, ExtractionConfig, GetExtract] {
-    val name = "extractions"
-    def newGet(uuid: String) = GetExtract(uuid)
+    private[core] val name = "extractions"
+    private[core] def newGet(uuid: String) = GetExtract(uuid)
   }
 }
 
