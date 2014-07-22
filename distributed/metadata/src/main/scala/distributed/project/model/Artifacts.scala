@@ -31,7 +31,8 @@ case class ArtifactsOut(results: Seq[SubArtifactsOut])
  * a compilation. Notice that the list of relative file locations is not in a 1:1 relationship
  * with the list of artifacts (there might be checksums and other files).
  */
-case class SubArtifactsOut(subName: String, artifacts: Seq[ArtifactLocation], relative: Seq[ArtifactRelative])
+case class SubArtifactsOut(subName: String, artifacts: Seq[ArtifactLocation], relative: Seq[ArtifactRelative],
+    moduleInfo: com.typesafe.reactiveplatform.manifest.ModuleInfo)
  // Note: the location path elements will be separated using '/'; it may be made platform-independent in the future
 /**
  * This class represents the location that an artifact has within a maven/ivy/p2 repository.

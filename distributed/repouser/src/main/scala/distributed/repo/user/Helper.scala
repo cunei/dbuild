@@ -137,8 +137,8 @@ object LocalRepoHelper {
    */
   // currently only used by getPublishedDeps(), while resolvePartialArtifacts() is also used directly by materializePartialProjectRepository
   protected def resolveArtifacts[T](key: GetProject,
-    remote: ReadableRepository): ((File, ArtifactSha) => T) => ResolutionResult[T] =
-    resolvePartialArtifacts(uuid, Seq.empty, remote)
+    remote: ReadableRepository): ((InputStream, ArtifactSha) => T) => ResolutionResult[T] =
+    resolvePartialArtifacts(key, Seq.empty, remote)
 
   /**
    * As for resolveArtifacts, but only for a list of subprojects. If the list is empty, grab all the files.
@@ -147,7 +147,7 @@ object LocalRepoHelper {
    * "subprojs" list of subprojects; however, "metadata" contain the *full* project description, which
    * includes the full list of modules, and the full list of ArtifactLocations.
    */
-  protected def resolvePartialArtifacts[T](gp: GetProject, subprojs: Seq[String], remote: ReadableRepository)(f: (File, ArtifactSha) => T): ResolutionResult[T] = {
+  protected def resolvePartialArtifacts[T](gp: GetProject, subprojs: Seq[String], remote: ReadableRepository)(f: (InputStream, ArtifactSha) => T): ResolutionResult[T] = {
     val metadata =
       materializeProjectMetadata(gp, remote)
     val fetch = if (subprojs.isEmpty) metadata.versions.results.map { _.subName } else {
@@ -181,7 +181,7 @@ object LocalRepoHelper {
    *   @return The list of *versioned* artifacts that are now in the local repo,
    *   plus a log message as a sequence of strings.
    */
-  def materializeProjectRepository(uuid: String, remote: ReadableRepository, localRepo: File, debug: Boolean): (Seq[ArtifactLocation], Seq[com.typesafe.reactiveplatform.manifest.ModuleInfo], Seq[String]) =
+  def materializeProjectRepository(key: GetProject, remote: ReadableRepository, localRepo: File, debug: Boolean): (Seq[ArtifactLocation], Seq[com.typesafe.reactiveplatform.manifest.ModuleInfo], Seq[String]) =
     materializePartialProjectRepository(key, Seq.empty, remote, localRepo, debug)
 
   /* Materialize only parts of a given projects, and specifically
@@ -189,7 +189,7 @@ object LocalRepoHelper {
    */
   def materializePartialProjectRepository(key: GetProject, subprojs: Seq[String], remote: ReadableRepository,
     localRepo: File, debug: Boolean): (Seq[ArtifactLocation], Seq[com.typesafe.reactiveplatform.manifest.ModuleInfo], Seq[String]) = {
-    val ResolutionResult(meta, _, arts, modInfos) = resolvePartialArtifacts(uuid, subprojs, remote) { (inputStream, artifact) =>
+    val ResolutionResult(meta, _, arts, modInfos) = resolvePartialArtifacts(key, subprojs, remote) { (inputStream, artifact) =>
       val file = new File(localRepo, artifact.location.location)
       val outputStream = new FileOutputStream(file)
       IOUtils.copy(inputStream, outputStream)
