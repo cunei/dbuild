@@ -617,7 +617,14 @@ object AssembleBuildSystem extends BuildSystemCore {
 
     // We preserve the list of original subprojects (and consequently modules),
     // where the subproject names may be slightly renamed in order to avoid collisions.
-    val out = ArtifactsOut(artifactsMap flatMap { _._2.results })
+    // since the SHAs need to be recomputed, we strip them from the BuildSubArtifactsOuts,
+    // reducing them again to SubArtifactsOuts.
+    val out = ArtifactsOut(artifactsMap flatMap {
+      _._2.results.map {
+        case BuildSubArtifactsOut(subName, artifacts, shas, moduleInfo) =>
+          SubArtifactsOut(subName, artifacts, shas.map { _.location }, moduleInfo)
+      }
+    })
     log.debug("out: " + writeValue(out))
     out
 

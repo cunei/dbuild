@@ -613,7 +613,7 @@ object DistributedRunner {
       val (state10, mi) = Project.extract(state9).runTask(moduleInfo in ref, state9)
 
       (state10, (currentFiles,
-        SubArtifactsOut(normalizedProjectName(ref, baseDirectory), artifacts, newFilesShas, mi)
+        SubArtifactsOut(normalizedProjectName(ref, baseDirectory), artifacts, newFilesRelative, mi)
       ))
     }
 
