@@ -106,7 +106,15 @@ object LocalBuildRunner {
         val value = build.depInfo.head.baseVersion // We only collect the artifacts from the base level, hence the "head"
         val Split = """^([\.0-9]+)(.*)$""".r
         // we strip away the original suffix, if any
-        val Split(originalVersion, originalSuffix) = value
+        val (originalVersion, originalSuffix) = value match {
+          case Split(version, suffix) => (version, suffix)
+          case wrong =>
+            log.warn("*** WARNING! *** This version string does not conform to the usual specification,")
+            log.warn("and cannot be divided into a version number and a suffix: \"" + wrong + "\"")
+            log.warn("That may cause unexpected version sortings and incorrect library evictions.")
+            log.warn("Please contact the project developers to let them know about this issue.")
+            (wrong, "")
+        }
         val defaultVersion = originalVersion +
           (build.config.setVersionSuffix match {
             case None => "-" + ("dbuildx" + build.uuid)
