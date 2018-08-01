@@ -43,7 +43,7 @@ def skip212 = Seq(
 def selectScalaVersion =
   scalaVersion := {
     val sb = (sbtVersion in pluginCrossBuild).value
-    if (sb.startsWith("0.13")) "2.10.7" else "2.12.4"
+    if (sb.startsWith("0.13")) "2.10.7" else "2.12.6"
   }
 
 lazy val root = (
@@ -51,7 +51,7 @@ lazy val root = (
   aggregate(adapter, graph, hashing, logging, actorLogging, proj, actorProj, deploy, http,
             core, plugin, build, support, supportGit, repo, metadata, docs, dist, indexmeta)
   settings(publish := Def.task {}, publishLocal := Def.task {}, version := MyVersion)
-  settings(crossSbtVersions := Seq("0.13.16", "1.2.0-RC3"), selectScalaVersion)
+  settings(crossSbtVersions := Seq("0.13.17", "1.1.6"), selectScalaVersion)
 )
 
 // This subproject only has dynamically
