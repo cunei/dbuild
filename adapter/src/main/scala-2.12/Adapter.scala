@@ -25,6 +25,20 @@ object LoggingInterface {
 
 trait StreamLoggerAdapter
 
+abstract class ReapplyInterface {
+  def reapplySettings(newSettings: Seq[sbt.Def.Setting[_]],
+    structure: sbt.internal.BuildStructure,
+    log: sbt.util.Logger)(implicit display: sbt.util.Show[sbt.Def.ScopedKey[_]]): sbt.internal.BuildStructure
+}
+
+class Reapply2 extends ReapplyInterface {
+  def reapplySettings(newSettings: Seq[sbt.Def.Setting[_]],
+    structure: sbt.internal.BuildStructure,
+    log: sbt.util.Logger)(implicit display: sbt.util.Show[sbt.Def.ScopedKey[_]]): sbt.internal.BuildStructure = {
+    sbt.dbuild.hack.DbuildHack.Load.reapply(newSettings, structure)(display)
+  }
+}
+
 object Adapter {
   val IO = sbt.io.IO
   val Path = sbt.io.Path
@@ -68,19 +82,80 @@ object Adapter {
   def defaultID(base: File, prefix: String = "default") =
    sbt.dbuild.hack.DbuildHack.defaultID(base, prefix)
 
+  val Reapply:ReapplyInterface = {
+    val ru = scala.reflect.runtime.universe
+    val rm = ru.runtimeMirror(Load.getClass.getClassLoader)
+    val im = rm.reflect(Load)
+    val reapplySymbol = ru.typeOf[Load.type].decl(ru.TermName("reapply")).asMethod
+    val reapply = im.reflectMethod(reapplySymbol)
+    if (reapplySymbol.paramLists(0).size == 2) {
+      new Reapply2
+    } else {
+      /*
+      package com.typesafe.dbuild.adapter
+      class Reapply3 extends ReapplyInterface {
+        def reapplySettings(newSettings: Seq[sbt.Def.Setting[_]],
+          structure: sbt.internal.BuildStructure,
+          log: sbt.util.Logger)(implicit display: sbt.util.Show[sbt.Def.ScopedKey[_]]): sbt.internal.BuildStructure = {
+          sbt.dbuild.hack.DbuildHack.Load.reapply(newSettings, structure, log)(display)
+        }
+      }
+      */
+      val reapply3Bytecode = """
+      yv66vgAAADQAOwEAJGNvbS90eXBlc2FmZS9kYnVpbGQvYWRhcHRlci9SZWFwcGx5MwcAAQEALGNv
+      bS90eXBlc2FmZS9kYnVpbGQvYWRhcHRlci9SZWFwcGx5SW50ZXJmYWNlBwADAQANQWRhcHRlci5z
+      Y2FsYQEAHkxzY2FsYS9yZWZsZWN0L1NjYWxhU2lnbmF0dXJlOwEABWJ5dGVzAQJsBgF5M0EhAQIB
+      FwlBIStaMXFhMkw4RwMCBAkFORENWjFxaRYUKEJBAwcDGSEnLV41bUkqEXEBQwEJaWYEWG1dMWdL
+      KgkRIkECZF82HAFhBQIBGUERUUJEBwIFJRFxQgECESUWDAcPHTd6EzokWE0dNGJHFkRRIQUBBQJJ
+      CWEBUDVvU1J0RCNBChEFNQEBIkILAQkDMRJhBDpmQ0IESC5fKmZpUkxnblo6FQldKXUrFwsDMQEC
+      IiEHEA4DaVEhYQcPAhEldEcvGjpvQzJUESFIAQRnCiQYQkEQGwU5EVUvGzdlJ1IUWG8ZO3ZlFkRR
+      IQkLQQQJCnEBWjV0YTIMFxBFAiRNIWoRAQoGA0txCUEhHjtqWSYRcQUKAgUnInx3Dw0CKnNBGSFG
+      TRwPBS0CZEIBFzAbBWkjQgEYCwMZYSRvXDh1fSUJUSQDAjI5BRlBKRo0CgVNIiQhQypkX0IsR21T
+      M3oTCSlkRwEDSl0mJChCQRMbIQlBFAgEAQUTaQITESFBAQYDWSRhQTAlaUURQUgRCQN7AWsRQRAG
+      An8FKTFvWTFtQyYREUkQAggdPiQILhs4aCEJaTQpAwJFfQkZEUlcPQkLGSMCGUEkAhc5LHdvVTN1
+      aSZ0d20dCQQRNgNmQkElTB0JYSMqQwFAEwlhZShBBHFDDlwXbVozCgU5eyVhQSpmYyoRQUoQGQMj
+      VgMyQQsqVRMJGUZHQQRUS1IkGE5cNBEFYSpGIQMsRgMDBQlRIQE8BQ15RmUNBQYxUgENAUcBCmdS
+      FFhvGTt2ZRZEUUEXC0ECbQsxAVw4aCEJGUMsAwJeSQkxQWpcNGhLSgQBACBzYnQvaW50ZXJuYWwv
+      dXRpbC9Jbml0JFNjb3BlZEtleQcACQEAFnNidC9pbnRlcm5hbC91dGlsL0luaXQHAAsBAAlTY29w
+      ZWRLZXkBAB5zYnQvaW50ZXJuYWwvdXRpbC9Jbml0JFNldHRpbmcHAA4BAAdTZXR0aW5nAQAPcmVh
+      cHBseVNldHRpbmdzAQByKExzY2FsYS9jb2xsZWN0aW9uL1NlcTtMc2J0L2ludGVybmFsL0J1aWxk
+      U3RydWN0dXJlO0xzYnQvdXRpbC9Mb2dnZXI7THNidC91dGlsL1Nob3c7KUxzYnQvaW50ZXJuYWwv
+      QnVpbGRTdHJ1Y3R1cmU7AQALbmV3U2V0dGluZ3MBAAlzdHJ1Y3R1cmUBAANsb2cBAAdkaXNwbGF5
+      AQAbc2J0L2RidWlsZC9oYWNrL0RidWlsZEhhY2skBwAXAQAHTU9EVUxFJAEAHUxzYnQvZGJ1aWxk
+      L2hhY2svRGJ1aWxkSGFjayQ7DAAZABoJABgAGwEABExvYWQBABYoKUxzYnQvaW50ZXJuYWwvTG9h
+      ZCQ7DAAdAB4KABgAHwEAEnNidC9pbnRlcm5hbC9Mb2FkJAcAIQEAB3JlYXBwbHkMACMAEgoAIgAk
+      AQAEdGhpcwEAJkxjb20vdHlwZXNhZmUvZGJ1aWxkL2FkYXB0ZXIvUmVhcHBseTM7AQAWTHNjYWxh
+      L2NvbGxlY3Rpb24vU2VxOwEAHUxzYnQvaW50ZXJuYWwvQnVpbGRTdHJ1Y3R1cmU7AQARTHNidC91
+      dGlsL0xvZ2dlcjsBAA9Mc2J0L3V0aWwvU2hvdzsBAAY8aW5pdD4BAAMoKVYMACwALQoABAAuAQAE
+      Q29kZQEAEkxvY2FsVmFyaWFibGVUYWJsZQEAD0xpbmVOdW1iZXJUYWJsZQEACVNpZ25hdHVyZQEA
+      2ChMc2NhbGEvY29sbGVjdGlvbi9TZXE8THNidC9pbnRlcm5hbC91dGlsL0luaXQ8THNidC9TY29w
+      ZTs+LlNldHRpbmc8Kj47PjtMc2J0L2ludGVybmFsL0J1aWxkU3RydWN0dXJlO0xzYnQvdXRpbC9M
+      b2dnZXI7THNidC91dGlsL1Nob3c8THNidC9pbnRlcm5hbC91dGlsL0luaXQ8THNidC9TY29wZTs+
+      LlNjb3BlZEtleTwqPjs+OylMc2J0L2ludGVybmFsL0J1aWxkU3RydWN0dXJlOwEAEE1ldGhvZFBh
+      cmFtZXRlcnMBAApTb3VyY2VGaWxlAQAMSW5uZXJDbGFzc2VzAQAZUnVudGltZVZpc2libGVBbm5v
+      dGF0aW9ucwEAD1NjYWxhSW5saW5lSW5mbwEACFNjYWxhU2lnACEAAgAEAAAAAAACAAEAEQASAAMA
+      MAAAAGEABQAFAAAAD7IAHLYAICssLRkEtgAlsAAAAAIAMQAAADQABQAAAA8AJgAnAAAAAAAPABMA
+      KAABAAAADwAUACkAAgAAAA8AFQAqAAMAAAAPABYAKwAEADIAAAAGAAEAAAAmADMAAAACADQANQAA
+      ABEEABMAEAAUABAAFQAQABYAEAABACwALQABADAAAAAvAAEAAQAAAAUqtwAvsQAAAAIAMQAAAAwA
+      AQAAAAUAJgAnAAAAMgAAAAYAAQAAACIABQA2AAAAAgAFADcAAAASAAIACgAMAA0AAQAPAAwAEAAB
+      ADgAAAALAAEABgABAAdzAAgAOQAAAA4BAAACACwALQAAEQASAAA6AAAAAwUAAA==
+      """
+      val reapply3Bytes = java.util.Base64.getMimeDecoder.decode(reapply3Bytecode)
+      class Reapply3ClassLoader(s:ClassLoader) extends ClassLoader(s)  {
+        def defineClass(name:String):Class[_] = {
+            defineClass(name, reapply3Bytes, 0, reapply3Bytes.length)
+        }
+      }
+      val cl = new Reapply3ClassLoader(getClass.getClassLoader)
+      val reapply3Class = cl.defineClass("com.typesafe.dbuild.adapter.Reapply3")
+      reapply3Class.getConstructor().newInstance().asInstanceOf[ReapplyInterface]
+    }
+  }
+
   def reapplySettings(newSettings: Seq[sbt.Def.Setting[_]],
     structure: sbt.internal.BuildStructure,
     log: sbt.util.Logger)(implicit display: sbt.util.Show[sbt.Def.ScopedKey[_]]): sbt.internal.BuildStructure = {
-      val ru = scala.reflect.runtime.universe
-      val rm = ru.runtimeMirror(getClass.getClassLoader)
-      val im = rm.reflect(Load)
-      val reapplySymbol = ru.typeOf[Load.type].decl(ru.TermName("reapply")).asMethod
-      val reapply = im.reflectMethod(reapplySymbol)
-      (if (reapplySymbol.paramLists(0).size == 3)
-        reapply(newSettings, structure, log, display)
-       else
-        reapply(newSettings, structure, display)
-      ).asInstanceOf[sbt.internal.BuildStructure]
+      Reapply.reapplySettings(newSettings, structure, log)(display)
     }
 
 // These bits are inappropriately copied from various versions of zinc; some have been
