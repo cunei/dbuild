@@ -81,16 +81,12 @@ object DBuildRunner {
   // Verify that the requested projects in SbtBuildConfig actually exist.
   def verifySubProjects(requestedProjects: Seq[String], refs: Seq[sbt.ProjectRef], baseDirectory: File, acceptPatterns: Boolean): Unit = {
     if (requestedProjects.nonEmpty) {
-      val uniq = requestedProjects.distinct
-      if (uniq.size != requestedProjects.size) {
-        sys.error("Some subprojects are listed twice: " + (requestedProjects.diff(uniq)).mkString("\"", "\", \"", "\"."))
-      }
       val availableProjects = normalizedProjectNames(refs, baseDirectory)
       // Can we accept patterns? If not, check that none is present
       val (requestedNames, requestedPatterns) = requestedProjects.toSet.partition {sbt.Project.validProjectID(_).isEmpty}
       if (requestedPatterns.nonEmpty && !acceptPatterns) {
         sys.error("Internal error: while building, the subproject list contains invalid project IDs; please report. Invalid: " +
-          requestedProjects.mkString("\"", "\", \"", "\"."))
+          requestedPatterns.mkString("\"", "\", \"", "\"."))
       }
       // requestedProjects may contain patterns. We only check that the strings that represent
       // valid sbt project IDs, and are *not* patterns, are actually names of existing subprojects.
@@ -106,6 +102,9 @@ object DBuildRunner {
     val matcher = new regex.Perl5Matcher()
     // We want the refs that match projects *in the order specified by projects*
     // The code below will work regardless of whether there are patterns or not in projects.
+    // If patterns are accepted, the list of refs might contain duplicates, in case one ref
+    // matches more than one pattern. In that case, we remove the duplicates that come later
+    // in the returned sequence.
     projects.map { p =>
       val pattern = new org.apache.oro.text.GlobCompiler().compile(p)
       val filtered = refs.filter { ref =>
@@ -115,7 +114,7 @@ object DBuildRunner {
         println("*** Warning: \"" + p + "\" does not match any known subproject")
       }
       filtered
-    }.flatten
+    }.flatten.distinct
   }
 
   def makeBuildResults(artifacts: Seq[BuildSubArtifactsOut], localRepo: File): model.BuildArtifactsOut =
